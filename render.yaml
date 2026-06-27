@@ -1,0 +1,18 @@
+# Render 部署藍圖（Blueprint）
+# 在 Render 用「Blueprint」連接這個 repo 時會自動讀取，
+# 自動設定建置/啟動指令，並提示你填入三個金鑰。
+services:
+  - type: web
+    name: linebot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node src/index.js
+    healthCheckPath: /
+    envVars:
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

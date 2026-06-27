@@ -1,0 +1,21 @@
+{
+  "name": "linebot",
+  "version": "1.0.0",
+  "description": "Family LINE bot — Groq AI chat, voice, vision, weather, reminders and more",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@line/bot-sdk": "^11.0.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.3.0"
+  }
+}
