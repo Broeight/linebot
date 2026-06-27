@@ -2,6 +2,7 @@
 
 const conversation = require('./conversation');
 const ai = require('./ai');
+const lang = require('./lang');
 const { getContentBuffer } = require('./line');
 const { getWeather } = require('./services/weather');
 const { translate } = require('./services/translate');
@@ -32,6 +33,7 @@ function helpText() {
     '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
     '🧾 發票對獎：「對獎 12345678」\n' +
     '🍳 吃什麼：「今天吃什麼」｜食譜：「食譜 番茄炒蛋」\n' +
+    '🌍 切換語言：「語言 越南語」（每人可各自設定）\n' +
     '🔄 清除對話：「/reset」'
   );
 }
@@ -45,6 +47,9 @@ function helpText() {
 async function handleText(userId, text) {
   const trimmed = text.trim();
 
+  // 追蹤這位使用者慣用的語言（用於照片描述、語音前綴等）
+  lang.noteText(userId, trimmed);
+
   // ── 基本指令 ─────────────────────────────────────────
   if (trimmed === '/reset' || trimmed === '重置' || trimmed === '清除對話') {
     conversation.reset(userId);
@@ -52,6 +57,16 @@ async function handleText(userId, text) {
   }
   if (trimmed === '/help' || trimmed === '說明' || trimmed === 'help' || trimmed === '選單') {
     return helpText();
+  }
+
+  // ── 個人語言設定 ─────────────────────────────────────
+  const langMatch = trimmed.match(/^(?:語言|語系|language|ngôn ngữ)\s*(.*)$/i);
+  if (langMatch) {
+    const arg = langMatch[1].trim();
+    const code = lang.nameToCode(arg);
+    if (!code) return lang.optionsText();
+    lang.setManual(userId, code);
+    return lang.confirmText(code);
   }
 
   // ── 提醒 ─────────────────────────────────────────────
@@ -148,8 +163,10 @@ async function handleAudio(userId, messageId) {
   if (!text || text.replace(/[\s.。,，、]/g, '').length === 0) {
     return '我聽不太清楚，可以再說一次、或直接打字給我嗎？';
   }
+  // handleText 會順便依這段話更新使用者語言，所以先處理再取語言
   const answer = await handleText(userId, text);
-  return `🎙 我聽到你說：「${text}」\n\n${answer}`;
+  const code = await lang.resolve(userId);
+  return `${lang.audioPrefix(code)}「${text}」\n\n${answer}`;
 }
 
 /** 處理圖片訊息：辨識內容 / 讀字 / 翻譯。 */
@@ -161,7 +178,8 @@ async function handleImage(userId, messageId) {
     console.error('抓圖片失敗：', e.message);
     return '抱歉，我拿不到這張圖片 🙏';
   }
-  const desc = await ai.vision(buf, 'image/jpeg', null);
+  const code = await lang.resolve(userId);
+  const desc = await ai.vision(buf, 'image/jpeg', lang.visionPrompt(code));
   return desc || '我看不太懂這張圖，換一張清楚一點的試試？';
 }
 
