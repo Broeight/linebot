@@ -25,6 +25,16 @@ const AUDIO_PREFIX = {
   id: '🎙 Saya mendengar:',
 };
 
+// 提醒主動推播的前綴（各語言）
+const REMINDER_PREFIX = {
+  'zh-TW': '⏰ 提醒：',
+  vi: '⏰ Nhắc nhở: ',
+  en: '⏰ Reminder: ',
+  ja: '⏰ リマインダー：',
+  th: '⏰ เตือนความจำ: ',
+  id: '⏰ Pengingat: ',
+};
+
 // 手動切換語言時的確認訊息（用該語言回）
 const CONFIRM = {
   'zh-TW': '✅ 已將你的語言設為繁體中文。',
@@ -134,6 +144,10 @@ function audioPrefix(code) {
   return AUDIO_PREFIX[code] || AUDIO_PREFIX['zh-TW'];
 }
 
+function reminderPrefix(code) {
+  return REMINDER_PREFIX[code] || REMINDER_PREFIX['zh-TW'];
+}
+
 module.exports = {
   noteText,
   resolve,
@@ -143,4 +157,5 @@ module.exports = {
   optionsText,
   visionPrompt,
   audioPrefix,
+  reminderPrefix,
 };

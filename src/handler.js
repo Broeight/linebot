@@ -3,6 +3,7 @@
 const conversation = require('./conversation');
 const ai = require('./ai');
 const lang = require('./lang');
+const tools = require('./tools');
 const { getContentBuffer } = require('./line');
 const { getWeather } = require('./services/weather');
 const { translate } = require('./services/translate');
@@ -143,9 +144,13 @@ async function handleText(userId, text) {
     return '已關閉喝水提醒。';
   }
 
-  // ── 預設：AI 對話 ────────────────────────────────────
+  // ── 預設：AI 對話（可用工具：自然語句設提醒、記帳、查發票、查天氣）──
   const history = conversation.append(userId, 'user', trimmed);
-  const reply = await ai.chat(history);
+  const reply = await ai.chat(history, {
+    tools: tools.defs,
+    runTool: (name, args) => tools.run(userId, name, args),
+    systemExtra: tools.timeContext(),
+  });
   conversation.append(userId, 'assistant', reply);
   return reply;
 }

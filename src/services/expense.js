@@ -23,6 +23,17 @@ function add(userId, body) {
   return `💰 已記帳：${item} ${amount} 元\n本月累計：${monthTotal} 元`;
 }
 
+// 給 AI 工具用：以結構化資料直接記一筆，回傳本月累計金額。
+function addItem(userId, item, amount) {
+  const t = store.taipei();
+  const list = store.load(FILE);
+  list.push({ userId, item: item || '其他', amount: Number(amount) || 0, ym: t.ym, date: t.date, at: Date.now() });
+  store.save(FILE, list);
+  return list
+    .filter((e) => e.userId === userId && e.ym === t.ym)
+    .reduce((s, e) => s + e.amount, 0);
+}
+
 function summary(userId) {
   const t = store.taipei();
   const items = store.load(FILE).filter((e) => e.userId === userId && e.ym === t.ym);
@@ -35,4 +46,4 @@ function summary(userId) {
   );
 }
 
-module.exports = { add, summary };
+module.exports = { add, addItem, summary };

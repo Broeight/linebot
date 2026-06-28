@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const ai = require('../ai');
+const lang = require('../lang');
 const { client } = require('../line');
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
@@ -86,6 +87,29 @@ async function add(userId, text) {
   return `✅ 好的，${when} 我會提醒你：「${r.message}」`;
 }
 
+/** 用已結構化的資料直接新增提醒（給 AI 工具用，省去再次 AI 解析）。回 {ok, when}。 */
+function addParsed(userId, p) {
+  const normHM = (s) => {
+    const m = (s || '').match(/^(\d{1,2}):(\d{2})$/);
+    return m ? `${String(+m[1]).padStart(2, '0')}:${m[2]}` : null;
+  };
+  const list = load();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+  if (p.type === 'daily') {
+    const hm = normHM(p.dailyTime);
+    if (!hm) return { ok: false };
+    list.push({ id, userId, type: 'daily', dailyTime: hm, message: p.message, lastFired: '' });
+    save(list);
+    return { ok: true, when: `every day ${hm}` };
+  }
+  const fireAt = taipeiToEpoch(p.datetime || '');
+  if (!fireAt) return { ok: false };
+  list.push({ id, userId, type: 'once', fireAt, message: p.message });
+  save(list);
+  return { ok: true, when: p.datetime };
+}
+
 /** 列出某使用者的提醒（有 tag 的預設提醒，例如喝水，不逐筆列出）。 */
 function list(userId) {
   const mine = load().filter((r) => r.userId === userId);
@@ -127,8 +151,14 @@ function clear(userId) {
 }
 
 async function push(userId, message) {
+  let prefix = '⏰ 提醒：';
   try {
-    await client.pushMessage({ to: userId, messages: [{ type: 'text', text: `⏰ 提醒：${message}` }] });
+    prefix = lang.reminderPrefix(await lang.resolve(userId));
+  } catch {
+    /* 拿不到語言就用預設中文前綴 */
+  }
+  try {
+    await client.pushMessage({ to: userId, messages: [{ type: 'text', text: prefix + message }] });
   } catch (e) {
     console.error('推播提醒失敗：', e.message);
   }
@@ -160,4 +190,4 @@ function start() {
   console.log('⏰ 提醒排程已啟動');
 }
 
-module.exports = { add, list, clear, start, addDailyPreset, removeByTag };
+module.exports = { add, addParsed, list, clear, start, addDailyPreset, removeByTag };
