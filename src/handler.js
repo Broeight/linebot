@@ -15,6 +15,8 @@ const morning = require('./services/morning');
 const health = require('./services/health');
 const expense = require('./services/expense');
 const exchangeRate = require('./services/exchangeRate');
+const holiday = require('./services/holiday');
+const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
 
@@ -33,6 +35,7 @@ function helpText() {
     '💧 喝水提醒：「開啟喝水提醒」\n' +
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
+    '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
     '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
     '🧾 發票對獎：「對獎 12345678」\n' +
     '🍳 吃什麼：「今天吃什麼」｜食譜：「食譜 番茄炒蛋」\n' +
@@ -111,6 +114,33 @@ async function handleText(userId, text) {
     /^[\d,]+\s*(?:台幣|新台幣|越南盾|越幣|美元|美金|日圓|日幣|人民幣|歐元|韓圓|韓幣|TWD|VND|USD|JPY|CNY|EUR|KRW)\s*換\s*.+$/i
   );
   if (amtConvMatch) return exchangeRate.lookup(trimmed);
+
+  // ── 放假 / 連假查詢 ─────────────────────────────────────
+  // 1) 今天放假嗎
+  if (/^今天放假嗎?$/.test(trimmed)) {
+    return holiday.describeDay(store.taipei().date, '今天');
+  }
+  // 2) 明天放假嗎
+  if (/^明天放假嗎?$/.test(trimmed)) {
+    return holiday.describeDay(holiday.addDays(store.taipei().date, 1), '明天');
+  }
+  // 3) 下一個 / 最近 / 下個 連假
+  if (/^(?:下一個|最近|下個)連假$/.test(trimmed)) {
+    return holiday.nextLongBreak();
+  }
+  // 4) 最近(的)假日
+  if (/^最近(?:的)?假日$/.test(trimmed)) {
+    return holiday.nextHoliday();
+  }
+  // 5) N月假日 / N月有哪些假 / N月放假
+  const monthMatch = trimmed.match(/^(\d{1,2})月(?:有哪些假|假日|放假)$/);
+  if (monthMatch) {
+    return holiday.monthHolidays(parseInt(monthMatch[1], 10));
+  }
+  // 6) 放假查詢 / 假日查詢 → 子選單說明
+  if (/^(?:放假|假日)查詢$/.test(trimmed)) {
+    return holiday.usage();
+  }
 
   // ── 發票對獎 ─────────────────────────────────────────
   const invoiceMatch = trimmed.match(/^(?:對獎|發票)\s*(.*)$/);

@@ -8,6 +8,7 @@ const { getExchangeSummary } = require('./services/exchangeRate');
 const reminder = require('./services/reminder');
 const expense = require('./services/expense');
 const { checkInvoice } = require('./services/invoice');
+const { getHolidaySummary } = require('./services/holiday');
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -95,6 +96,37 @@ const defs = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_taiwan_holiday',
+      description:
+        '查詢「台灣（中華民國）」的放假／國定假日／連假／補班資訊。' +
+        '當使用者用任何語言（尤其越南語）詢問台灣某天是否放假、下一個連假、最近假日、' +
+        '或某月有哪些假時呼叫。僅限台灣假日，不查越南或其他國家。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query_type: {
+            type: 'string',
+            enum: ['is_holiday', 'next_long_break', 'next_holiday', 'month_holidays'],
+            description:
+              '查詢類型：is_holiday=某特定日是否放假；next_long_break=下一個連假（連續≥3天）；' +
+              'next_holiday=最近一個放假日；month_holidays=某月份所有假日清單。',
+          },
+          date: {
+            type: 'string',
+            description: 'query_type=is_holiday 時用，格式 "YYYY-MM-DD"；不填預設今天（依背景提供的台北日期）。',
+          },
+          month: {
+            type: 'number',
+            description: 'query_type=month_holidays 時用，1–12 的月份數字。',
+          },
+        },
+        required: ['query_type'],
+      },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -102,7 +134,7 @@ function timeContext() {
   const t = store.taipei();
   return (
     `背景：現在台北時間是 ${t.date} ${t.hm}。` +
-    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎、查天氣或查匯率，就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。'
+    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎、查天氣、查匯率或查台灣放假/連假，就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。'
   );
 }
 
@@ -141,6 +173,14 @@ async function run(userId, name, argsJson) {
         return (
           (await getExchangeSummary(a.from, a.to, a.amount)) ||
           `Cannot fetch exchange rate for ${a.from} to ${a.to} right now.`
+        );
+      case 'get_taiwan_holiday':
+        return (
+          (await getHolidaySummary({
+            queryType: a.query_type,
+            date: a.date,
+            month: a.month,
+          })) || 'Cannot fetch Taiwan holiday data right now.'
         );
       default:
         return `Unknown tool: ${name}`;

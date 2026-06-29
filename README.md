@@ -13,6 +13,7 @@
 - 💧 **喝水提醒** — 一鍵開啟每天多次提醒
 - 💰 **家庭記帳** — 記一筆、查本月總額
 - 💱 **匯率查詢** — 「匯率 台幣 越南盾」「5000 台幣換越南盾」，含 VND，免 API key
+- 📅 **連假／放假查詢** — 「今天放假嗎」「下一個連假」「7月假日」，台灣行事曆，免 API key
 - 🌐 **翻譯** — 「翻譯 越南語 你吃飯了嗎」
 - 🧾 **統一發票對獎** — 「對獎 12345678」，財政部公開資料
 - 🍳 **今天吃什麼 / 食譜** — AI 出點子
@@ -40,6 +41,7 @@ src/
     health.js         血壓 / 血糖記錄
     expense.js        家庭記帳
     exchangeRate.js   匯率查詢（ExchangeRate-API 開放端點，含 VND，免 API key）
+    holiday.js        台灣連假／放假查詢（TaiwanCalendar CDN JSON，免 API key）
 ```
 
 > 存放資料的 `data/` 資料夾與 `.env` 都已被 `.gitignore` 排除。
