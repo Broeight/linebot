@@ -4,6 +4,7 @@
 // 工具結果回給模型後，模型會用「對方的語言」做最終確認回覆。
 const store = require('./store');
 const { getForecastSummary } = require('./services/weather');
+const { getExchangeSummary } = require('./services/exchangeRate');
 const reminder = require('./services/reminder');
 const expense = require('./services/expense');
 const { checkInvoice } = require('./services/invoice');
@@ -76,6 +77,24 @@ const defs = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_exchange_rate',
+      description:
+        '查詢兩種貨幣的參考匯率，可選擇換算金額。當使用者用任何語言（尤其越南語）' +
+        '詢問匯率、兌換比、或「X 元換多少」時呼叫。幣別用三碼代碼。',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: '來源幣別代碼，如 "TWD"、"VND"、"USD"。' },
+          to:   { type: 'string', description: '目標幣別代碼，如 "VND"、"TWD"。' },
+          amount: { type: 'number', description: '（選填）要換算的來源幣別金額。' },
+        },
+        required: ['from', 'to'],
+      },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -83,7 +102,7 @@ function timeContext() {
   const t = store.taipei();
   return (
     `背景：現在台北時間是 ${t.date} ${t.hm}。` +
-    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎或查天氣，就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。'
+    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎、查天氣或查匯率，就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。'
   );
 }
 
@@ -118,6 +137,11 @@ async function run(userId, name, argsJson) {
       }
       case 'check_invoice':
         return await checkInvoice(a.number);
+      case 'get_exchange_rate':
+        return (
+          (await getExchangeSummary(a.from, a.to, a.amount)) ||
+          `Cannot fetch exchange rate for ${a.from} to ${a.to} right now.`
+        );
       default:
         return `Unknown tool: ${name}`;
     }

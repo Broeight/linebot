@@ -14,6 +14,7 @@ const birthday = require('./services/birthday');
 const morning = require('./services/morning');
 const health = require('./services/health');
 const expense = require('./services/expense');
+const exchangeRate = require('./services/exchangeRate');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
 
@@ -31,6 +32,7 @@ function helpText() {
     '🩺 健康：「血壓 120 80」「血糖 95」｜查看：「血壓記錄」\n' +
     '💧 喝水提醒：「開啟喝水提醒」\n' +
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
+    '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
     '🧾 發票對獎：「對獎 12345678」\n' +
     '🍳 吃什麼：「今天吃什麼」｜食譜：「食譜 番茄炒蛋」\n' +
@@ -93,6 +95,22 @@ async function handleText(userId, text) {
   if (translateMatch) {
     return translate(translateMatch[1].trim());
   }
+
+  // ── 匯率 ─────────────────────────────────────────────
+  // 1) 關鍵字：匯率 / exchange rate（後接幣別，1 或 2 個）
+  const rateMatch = trimmed.match(/^(?:匯率|exchange\s*rate)\s+(.+)$/i);
+  if (rateMatch) return exchangeRate.lookup(rateMatch[1].trim());
+
+  // 2) 換算 + 內容（可含金額）
+  const convMatch = trimmed.match(/^換算\s+(.+)$/);
+  if (convMatch) return exchangeRate.lookup(convMatch[1].trim());
+
+  // 3) 「<金額> <幣別> 換 <幣別>」一句話格式
+  //    例：5000 台幣換越南盾 / 1,000 TWD 換 VND
+  const amtConvMatch = trimmed.match(
+    /^[\d,]+\s*(?:台幣|新台幣|越南盾|越幣|美元|美金|日圓|日幣|人民幣|歐元|韓圓|韓幣|TWD|VND|USD|JPY|CNY|EUR|KRW)\s*換\s*.+$/i
+  );
+  if (amtConvMatch) return exchangeRate.lookup(trimmed);
 
   // ── 發票對獎 ─────────────────────────────────────────
   const invoiceMatch = trimmed.match(/^(?:對獎|發票)\s*(.*)$/);
