@@ -9,6 +9,7 @@ const reminder = require('./services/reminder');
 const expense = require('./services/expense');
 const { checkInvoice } = require('./services/invoice');
 const { getHolidaySummary } = require('./services/holiday');
+const { getFuelPriceSummary } = require('./services/fuelPrice');
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -127,6 +128,29 @@ const defs = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_fuel_price',
+      description:
+        '查詢台灣中油當週油價牌價。當使用者用任何語言（尤其越南語）詢問台灣油價、' +
+        '汽油價格、柴油多少錢時呼叫。',
+      parameters: {
+        type: 'object',
+        properties: {
+          product: {
+            type: 'string',
+            enum: ['UNLEADED_92', 'UNLEADED_95', 'UNLEADED_98', 'SUPER_DIESEL'],
+            description:
+              '油品代碼；不填則回傳全部四種。' +
+              ' xăng 92→UNLEADED_92、xăng 95→UNLEADED_95、xăng 98→UNLEADED_98、' +
+              'dầu diesel/dầu DO→SUPER_DIESEL。',
+          },
+        },
+        // product 為選填（PRD §5.3）→ 不放進 required
+      },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -134,7 +158,8 @@ function timeContext() {
   const t = store.taipei();
   return (
     `背景：現在台北時間是 ${t.date} ${t.hm}。` +
-    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎、查天氣、查匯率或查台灣放假/連假，就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。'
+    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎、查天氣、查匯率、查台灣放假/連假或查台灣油價（汽油／柴油），就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。' +
+    '若使用者用任何語言詢問台灣油價、汽油、柴油，就呼叫 get_fuel_price 工具。'
   );
 }
 
@@ -181,6 +206,11 @@ async function run(userId, name, argsJson) {
             date: a.date,
             month: a.month,
           })) || 'Cannot fetch Taiwan holiday data right now.'
+        );
+      case 'get_fuel_price':
+        return (
+          (await getFuelPriceSummary(a.product)) ||
+          'Cannot fetch Taiwan CPC fuel price right now.'
         );
       default:
         return `Unknown tool: ${name}`;

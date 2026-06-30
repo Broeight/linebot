@@ -28,7 +28,28 @@ async function chat(history, opts = {}) {
   // parallel_tool_calls:false → 一次只呼叫一個工具，避免重複執行有副作用的操作（如重複記帳）
   const withTools = tools && tools.length ? { tools, parallel_tool_calls: false } : {};
 
-  let resp = await groq.chat.completions.create({ ...base, messages, ...withTools });
+  // 模型偶爾會把「工具呼叫」的格式吐錯，Groq 會回 400 tool_use_failed。
+  function toolUseFailed(e) {
+    const code = e?.error?.code || e?.code;
+    return (
+      e?.status === 400 &&
+      (code === 'tool_use_failed' || /tool_use_failed|Failed to call a function/i.test(String(e?.message || '')))
+    );
+  }
+  // 呼叫模型；若工具格式弄錯，就改用「不帶工具」重試一次，讓它直接用知識回答，
+  // 而不是整個對話崩掉、回「發生了一點問題」。
+  async function complete() {
+    try {
+      return await groq.chat.completions.create({ ...base, messages, ...withTools });
+    } catch (e) {
+      if (withTools.tools && toolUseFailed(e)) {
+        return await groq.chat.completions.create({ ...base, messages });
+      }
+      throw e;
+    }
+  }
+
+  let resp = await complete();
   let msg = resp.choices?.[0]?.message;
 
   // 工具呼叫迴圈（最多 4 輪，避免無限迴圈）
@@ -39,7 +60,7 @@ async function chat(history, opts = {}) {
       const result = await runTool(tc.function.name, tc.function.arguments);
       messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
     }
-    resp = await groq.chat.completions.create({ ...base, messages, ...withTools });
+    resp = await complete();
     msg = resp.choices?.[0]?.message;
     rounds++;
   }

@@ -16,6 +16,7 @@ const health = require('./services/health');
 const expense = require('./services/expense');
 const exchangeRate = require('./services/exchangeRate');
 const holiday = require('./services/holiday');
+const fuelPrice = require('./services/fuelPrice');
 const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
@@ -36,6 +37,7 @@ function helpText() {
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
+    '⛽ 油價：「油價」「95油價」「柴油油價」\n' +
     '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
     '🧾 發票對獎：「對獎 12345678」\n' +
     '🍳 吃什麼：「今天吃什麼」｜食譜：「食譜 番茄炒蛋」\n' +
@@ -142,6 +144,21 @@ async function handleText(userId, text) {
     return holiday.usage();
   }
 
+  // ── 油價（台灣中油）─────────────────────────────────────
+  // 1) 油價查詢 → 使用說明子選單（先比「查詢」再比其他，避免被後面規則吃掉）
+  if (/^油價查詢$/.test(trimmed)) {
+    return fuelPrice.usage();
+  }
+  // 2) 單一油品：92/95/98/柴油… + 可選「無鉛」 + 「油價」
+  const fuelOneMatch = trimmed.match(/^(92|95|98|超柴|柴油|超級柴油|九二|九五|九八)無?鉛?\s*油價$/);
+  if (fuelOneMatch) {
+    return fuelPrice.lookup(fuelOneMatch[1]);
+  }
+  // 3) 全部四種：油價 / 今天油價 / 本週油價 / 這週油價 / 當週油價
+  if (/^(?:油價|今天油價|本週油價|這週油價|當週油價)$/.test(trimmed)) {
+    return fuelPrice.lookup();
+  }
+
   // ── 發票對獎 ─────────────────────────────────────────
   const invoiceMatch = trimmed.match(/^(?:對獎|發票)\s*(.*)$/);
   if (invoiceMatch) {
@@ -233,7 +250,11 @@ async function handleImage(userId, messageId) {
   }
   const code = await lang.resolve(userId);
   const desc = await ai.vision(buf, 'image/jpeg', lang.visionPrompt(code));
-  return desc || '我看不太懂這張圖，換一張清楚一點的試試？';
+  if (!desc) return '我看不太懂這張圖，換一張清楚一點的試試？';
+  // 把圖片描述存進對話記憶，讓使用者能接著針對這張圖追問（例如「這藥的作用？」）
+  conversation.append(userId, 'user', '（我傳了一張圖片給你看）');
+  conversation.append(userId, 'assistant', desc);
+  return desc;
 }
 
 /** 依訊息類型分派；回傳要回覆的字串，或 null（不回覆）。 */
