@@ -4,6 +4,20 @@ const { config } = require('./config');
 
 const groq = new Groq({ apiKey: config.groq.apiKey });
 
+// 從 Groq tool_use_failed 的 failed_generation（形如 <function=NAME{...JSON...}</function>）
+// 解析出模型「本來想呼叫的工具」，救回成正規 tool_calls。
+function parseFailedToolCalls(text) {
+  const calls = [];
+  if (!text) return calls;
+  const re = /<function=([a-zA-Z0-9_]+)[\s\S]*?(\{[\s\S]*?\})\s*<\/function>/g;
+  let m;
+  let i = 0;
+  while ((m = re.exec(text))) {
+    calls.push({ id: `recovered_${i++}`, type: 'function', function: { name: m[1], arguments: m[2] } });
+  }
+  return calls;
+}
+
 const SYSTEM_PROMPT = `你是一個友善、實用的 LINE 聊天機器人助理。
 
 規則：
@@ -30,22 +44,28 @@ async function chat(history, opts = {}) {
 
   // 模型偶爾會把「工具呼叫」的格式吐錯，Groq 會回 400 tool_use_failed。
   function toolUseFailed(e) {
-    const code = e?.error?.code || e?.code;
+    const code = e?.error?.error?.code || e?.error?.code || e?.code;
     return (
       e?.status === 400 &&
       (code === 'tool_use_failed' || /tool_use_failed|Failed to call a function/i.test(String(e?.message || '')))
     );
   }
-  // 呼叫模型；若工具格式弄錯，就改用「不帶工具」重試一次，讓它直接用知識回答，
-  // 而不是整個對話崩掉、回「發生了一點問題」。
+
+  // 呼叫模型；若模型把工具呼叫格式吐錯（tool_use_failed），優先「把它本來想呼叫的
+  // 工具救回來」變成正規的 tool_calls（讓提醒/記帳等真的生效）；救不回來才退而
+  // 不帶工具重試，至少不會整個崩掉、回「發生了一點問題」。
   async function complete() {
     try {
       return await groq.chat.completions.create({ ...base, messages, ...withTools });
     } catch (e) {
-      if (withTools.tools && toolUseFailed(e)) {
-        return await groq.chat.completions.create({ ...base, messages });
+      if (!(withTools.tools && toolUseFailed(e))) throw e;
+      const fg = e?.error?.error?.failed_generation || e?.error?.failed_generation || '';
+      const recovered = parseFailedToolCalls(fg);
+      if (recovered.length && runTool) {
+        // 偽裝成一個正常的「帶 tool_calls 的回應」，交給下面的工具迴圈執行
+        return { choices: [{ message: { role: 'assistant', content: '', tool_calls: recovered } }] };
       }
-      throw e;
+      return await groq.chat.completions.create({ ...base, messages });
     }
   }
 
