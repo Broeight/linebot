@@ -29,34 +29,94 @@ const STATION_ALIAS = {
   '北車': '台北', '台北車站': '台北', '高雄車站': '高雄', '高火': '高雄',
 };
 
-// ── 記憶體快取（以 `起站-迄站-日期` 為 key）────────────────────────────
-const cache = {};
+// 全台鐵車站清單來源（免金鑰），供辨識所有車站的中／英文名
+const STATION_URL = 'https://ptx.transportdata.tw/MOTC/v3/Rail/TRA/Station?%24format=JSON';
+const STATIONS_TTL_MS = 24 * 60 * 60 * 1000; // 車站清單快取 24 小時
+
+// 主要車站的越南語（漢越音）別名 → 中文站名（去聲調、小寫、Đ→d 後比對）
+const VN_ALIAS = {
+  'dai bac': '台北', 'tan truc': '新竹', 'trung lich': '中壢', 'trung ly': '中壢',
+  'dao vien': '桃園', 'dai trung': '台中', 'dai nam': '台南', 'cao hung': '高雄',
+  'hoa lien': '花蓮', 'dai dong': '台東', 'ban kieu': '板橋', 'co long': '基隆',
+  'gia nghia': '嘉義', 'chuong hoa': '彰化', 'nghi lan': '宜蘭', 'tan doanh': '新營',
+  'dau luc': '斗六', 'bao nguyen': '豐原', 'truc nam': '竹南', 'tan phong': '新豐',
+};
+
+// ── 記憶體快取 ─────────────────────────────────────────────────────────
+const cache = {};                              // OD 班次：key = `起-迄-日期`
+let stationsCache = { ts: 0, zh: null, en: null }; // 車站清單
+
+// 去除越南語聲調並小寫（Đ/đ → d）
+function toAscii(s) {
+  return String(s).toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// 把台北時間日期字串加一天，回傳 'YYYY-MM-DD'
+function addOneDay(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00+08:00`);
+  d.setTime(d.getTime() + 24 * 60 * 60 * 1000);
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value])
+  );
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+// 抓全台鐵車站清單，建中文名／英文名 → { name, id } 對照（快取 24h）。抓不到回 null。
+async function fetchStations() {
+  if (stationsCache.zh && Date.now() - stationsCache.ts < STATIONS_TTL_MS) return stationsCache;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(STATION_URL, { signal: controller.signal });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const list = Array.isArray(data.Stations) ? data.Stations : [];
+    const zh = {};
+    const en = {};
+    for (const s of list) {
+      const id = s.StationID;
+      const nameZh = s.StationName && s.StationName.Zh_tw;
+      const nameEn = s.StationName && s.StationName.En;
+      if (!id || !nameZh) continue;
+      zh[nameZh.replace(/臺/g, '台')] = { name: nameZh, id };
+      if (nameEn) en[nameEn.toLowerCase()] = { name: nameZh, id };
+    }
+    if (Object.keys(zh).length) stationsCache = { ts: Date.now(), zh, en };
+    return stationsCache.zh ? stationsCache : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ── 內部函式：站名正規化 ─────────────────────────────────────────────
 
 /**
- * 把使用者輸入（中文站名，含正體「臺」／俗寫「台」／常見別名）正規化為 { name, id }。
- * 找不到回 null（由上層輸出「站名無法辨識」訊息）。
+ * 把使用者輸入的站名正規化為 { name, id }。支援：中文全名（臺／台互通）、常見別名、
+ * 越南語漢越音（如 Tân Trúc→新竹）、英文名（如 Hsinchu/Zhongli）。找不到回 null。
  * @param {string} input
- * @returns {{name:string, id:string}|null}
+ * @returns {Promise<{name:string, id:string}|null>}
  */
-function normalizeStation(input) {
+async function normalizeStation(input) {
   if (!input) return null;
-  let t = input.trim();
-  if (!t) return null;
+  const aliasKey = String(input).trim().replace(/臺/g, '台');
+  if (!aliasKey) return null;
+  const t = aliasKey.replace(/(車站|站)$/, '').trim();
 
-  // 正體「臺」→ 俗寫「台」，正體／俗寫互通
-  t = t.replace(/臺/g, '台');
-  // 去除結尾贅字「站」「車站」
-  t = t.replace(/(車站|站)$/, '');
+  // 依序決定候選中文站名：越南語別名 → 中文簡稱別名 → 原字串（當中文全名）
+  const candidateZh = VN_ALIAS[toAscii(t)] || STATION_ALIAS[aliasKey] || STATION_ALIAS[t] || t;
 
-  // 先查別名表（含未去除贅字的原字串，避免「台北車站」被去尾字後查不到別名）
-  const aliasKey = input.trim().replace(/臺/g, '台');
-  let name = STATION_ALIAS[aliasKey] || STATION_ALIAS[t] || t;
-
-  if (!STATIONS[name]) return null;
-
-  return { name, id: STATIONS[name] };
+  const maps = await fetchStations();
+  if (maps) {
+    if (maps.zh[candidateZh]) return maps.zh[candidateZh]; // 中文（含全部 245 站）
+    if (maps.en[t.toLowerCase()]) return maps.en[t.toLowerCase()]; // 英文名
+  }
+  // 抓不到清單時的備援（內建主要站）
+  if (STATIONS[candidateZh]) return { name: candidateZh, id: STATIONS[candidateZh] };
+  return null;
 }
 
 // ── 內部函式：資料抓取 + 快取 ─────────────────────────────────────────
@@ -191,14 +251,14 @@ async function lookup(argText) {
   }
 
   const [fromToken, toToken] = tokens;
-  const from = normalizeStation(fromToken);
-  const to = normalizeStation(toToken);
+  const from = await normalizeStation(fromToken);
+  const to = await normalizeStation(toToken);
 
   if (!from) {
-    return `站名無法辨識：「${fromToken}」，請輸入明確的車站名稱`;
+    return `站名無法辨識:「${fromToken}」，請輸入明確的車站名稱（中文或英文皆可）`;
   }
   if (!to) {
-    return `站名無法辨識：「${toToken}」，請輸入明確的車站名稱`;
+    return `站名無法辨識:「${toToken}」，請輸入明確的車站名稱（中文或英文皆可）`;
   }
 
   const today = store.taipei();
@@ -249,14 +309,14 @@ async function nextTrain(argText) {
   }
 
   const [fromToken, toToken] = tokens;
-  const from = normalizeStation(fromToken);
-  const to = normalizeStation(toToken);
+  const from = await normalizeStation(fromToken);
+  const to = await normalizeStation(toToken);
 
   if (!from) {
-    return `站名無法辨識：「${fromToken}」，請輸入明確的車站名稱`;
+    return `站名無法辨識:「${fromToken}」，請輸入明確的車站名稱（中文或英文皆可）`;
   }
   if (!to) {
-    return `站名無法辨識：「${toToken}」，請輸入明確的車站名稱`;
+    return `站名無法辨識:「${toToken}」，請輸入明確的車站名稱（中文或英文皆可）`;
   }
 
   const today = store.taipei();
@@ -307,20 +367,24 @@ function usage() {
  * @param {{from:string, to:string, nextOnly?:boolean}} opts
  * @returns {Promise<string|null>}
  */
-async function getTraTrainSummary({ from, to, nextOnly }) {
-  const fromSt = normalizeStation(from);
-  const toSt = normalizeStation(to);
+async function getTraTrainSummary({ from, to, nextOnly, day }) {
+  const fromSt = await normalizeStation(from);
+  const toSt = await normalizeStation(to);
 
   if (!fromSt || !toSt) {
     const bad = !fromSt ? from : to;
-    return `Station not recognized: "${bad}". Please give a valid TRA station name (e.g. Taipei, Taichung, Hualien).`;
+    return `Station not recognized: "${bad}". Ask the user for a valid Taiwan Railway station name (Chinese or English, e.g. 台北/Taipei, 中壢/Zhongli).`;
   }
 
-  const today = store.taipei();
+  const t0 = store.taipei();
+  const isTomorrow = day === 'tomorrow';
+  const date = isTomorrow ? addOneDay(t0.date) : t0.date;
+  const fromHm = isTomorrow ? '00:00' : t0.hm; // 明天→整天班次；今天→現在之後
+  const whenEn = isTomorrow ? 'tomorrow' : 'today';
 
   let result;
   try {
-    result = await fetchOdTrains(fromSt.id, toSt.id, today.date);
+    result = await fetchOdTrains(fromSt.id, toSt.id, date);
   } catch (_e) {
     return null;
   }
@@ -328,16 +392,16 @@ async function getTraTrainSummary({ from, to, nextOnly }) {
   if (!result.ok) return null;
 
   const limit = nextOnly ? 1 : MAX_RESULTS;
-  const trains = filterAndSort(result.trains, today.hm, limit);
+  const trains = filterAndSort(result.trains, fromHm, limit);
 
   if (trains.length === 0) {
-    return `No remaining TRA trains today from ${fromSt.name} to ${toSt.name}.`;
+    return `No TRA trains ${whenEn} from ${fromSt.name} to ${toSt.name}.`;
   }
 
   if (nextOnly) {
     const t = trains[0];
     return (
-      `Next TRA train from ${fromSt.name} to ${toSt.name} today: ` +
+      `Next TRA train ${whenEn} from ${fromSt.name} to ${toSt.name}: ` +
       `No.${t.trainNo} ${t.typeEn}, departs ${t.departure}, arrives ${t.arrival} (${durationEn(t.departure, t.arrival)}).\n` +
       `Source: Taiwan Railway (TRA) via MOTC PTX.`
     );
@@ -348,7 +412,7 @@ async function getTraTrainSummary({ from, to, nextOnly }) {
   );
 
   return (
-    `TRA trains from ${fromSt.name} to ${toSt.name} today (${today.date}), departing after ${today.hm}:\n` +
+    `TRA trains ${whenEn} (${date}) from ${fromSt.name} to ${toSt.name}:\n` +
     parts.join('; ') + '.\n' +
     `Source: Taiwan Railway (TRA) via MOTC PTX.`
   );

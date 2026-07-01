@@ -157,15 +157,22 @@ const defs = [
     function: {
       name: 'get_tra_train',
       description:
-        '查詢台灣台鐵（TRA）某起站到迄站、今天當下時間之後的火車班次時刻。'
+        '查詢台灣台鐵（TRA）某起站到迄站的火車班次時刻（今天或明天）。'
         + '當使用者用任何語言（尤其越南語）詢問台鐵/火車從某站到某站的班次、'
-        + '下一班車幾點時呼叫。僅限台鐵、僅限今天當下之後的班次。',
+        + '下一班車幾點時呼叫。僅限台鐵。',
       parameters: {
         type: 'object',
         properties: {
-          from: { type: 'string', description: '起站中文站名，如「台北」「臺北」「花蓮」。越南語/拼音也盡量轉成中文站名。' },
-          to:   { type: 'string', description: '迄站中文站名，如「台中」「高雄」。' },
-          next_only: { type: 'boolean', description: '若使用者問「下一班/最近一班」設 true（只回 1 筆）；問「班次/有哪些車」設 false 或不填。' },
+          from: {
+            type: 'string',
+            description:
+              '起站站名。優先用「中文站名」（如 台北、新竹、中壢、高雄）；若不確定中文寫法，' +
+              '就用「英文站名」（如 Taipei、Hsinchu、Zhongli）或使用者原本講的（含越南語，如 Tân Trúc、Trung Lịch）。' +
+              '⚠️ 不要自己音譯猜一組漢字（例如把 Tân Trúc 誤寫成「和林」）。',
+          },
+          to: { type: 'string', description: '迄站站名，規則同 from。' },
+          next_only: { type: 'boolean', description: '使用者問「下一班/最近一班」設 true（只回 1 筆）；問「班次/有哪些車」設 false 或不填。' },
+          day: { type: 'string', enum: ['today', 'tomorrow'], description: '查今天或明天；使用者說「明天/ngày mai」設 tomorrow，否則不填（預設今天）。' },
         },
         required: ['from', 'to'],
       },
@@ -235,8 +242,12 @@ async function run(userId, name, argsJson) {
         );
       case 'get_tra_train':
         return (
-          (await getTraTrainSummary({ from: a.from, to: a.to, nextOnly: a.next_only === true })) ||
-          'Cannot fetch Taiwan railway (TRA) timetable right now.'
+          (await getTraTrainSummary({
+            from: a.from,
+            to: a.to,
+            nextOnly: a.next_only === true,
+            day: a.day === 'tomorrow' ? 'tomorrow' : 'today',
+          })) || 'Cannot fetch Taiwan railway (TRA) timetable right now.'
         );
       default:
         return `Unknown tool: ${name}`;
