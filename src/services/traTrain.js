@@ -40,7 +40,13 @@ const VN_ALIAS = {
   'hoa lien': '花蓮', 'dai dong': '台東', 'ban kieu': '板橋', 'co long': '基隆',
   'gia nghia': '嘉義', 'chuong hoa': '彰化', 'nghi lan': '宜蘭', 'tan doanh': '新營',
   'dau luc': '斗六', 'bao nguyen': '豐原', 'truc nam': '竹南', 'tan phong': '新豐',
+  'trung li': '中壢', // 使用者常把 Trung Lịch 打成 trung lì → 去聲調成 trung li
+  'co hung': '高雄',  // cao hung 的口語變體
 };
+
+// 去空白版索引（模組載入時建立一次），供 normalizeStation 容忍「trunglich」等無空白拼法
+const VN_ALIAS_NOSPACE = {};
+for (const k of Object.keys(VN_ALIAS)) VN_ALIAS_NOSPACE[k.replace(/\s+/g, '')] = VN_ALIAS[k];
 
 // ── 記憶體快取 ─────────────────────────────────────────────────────────
 const cache = {};                              // OD 班次：key = `起-迄-日期`
@@ -80,8 +86,10 @@ async function fetchStations() {
       const nameZh = s.StationName && s.StationName.Zh_tw;
       const nameEn = s.StationName && s.StationName.En;
       if (!id || !nameZh) continue;
-      zh[nameZh.replace(/臺/g, '台')] = { name: nameZh, id };
-      if (nameEn) en[nameEn.toLowerCase()] = { name: nameZh, id };
+      // 一律用俗寫「台」字版當顯示名（與 STATIONS 表、App 其他地方一致；PTX 官方寫「臺北」）
+      const nameZhShort = nameZh.replace(/臺/g, '台');
+      zh[nameZhShort] = { name: nameZhShort, id };
+      if (nameEn) en[nameEn.toLowerCase()] = { name: nameZhShort, id };
     }
     if (Object.keys(zh).length) stationsCache = { ts: Date.now(), zh, en };
     return stationsCache.zh ? stationsCache : null;
@@ -106,8 +114,13 @@ async function normalizeStation(input) {
   if (!aliasKey) return null;
   const t = aliasKey.replace(/(車站|站)$/, '').trim();
 
-  // 依序決定候選中文站名：越南語別名 → 中文簡稱別名 → 原字串（當中文全名）
-  const candidateZh = VN_ALIAS[toAscii(t)] || STATION_ALIAS[aliasKey] || STATION_ALIAS[t] || t;
+  // 依序決定候選中文站名：越南語別名（直查）→ 越南語別名（去空白後備）→ 中文簡稱別名 → 原字串（當中文全名）
+  const candidateZh =
+    VN_ALIAS[toAscii(t)] ||
+    VN_ALIAS_NOSPACE[toAscii(t).replace(/\s+/g, '')] ||
+    STATION_ALIAS[aliasKey] ||
+    STATION_ALIAS[t] ||
+    t;
 
   const maps = await fetchStations();
   if (maps) {
