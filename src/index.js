@@ -41,10 +41,13 @@ app.use((err, req, res, next) => {
 async function handleEvent(event) {
   try {
     const reply = await handler.replyForEvent(event);
-    if (!reply) return; // 不需回覆的事件（貼圖、影片、加好友等）
+    // 空字串/純空白不送（LINE 會回 400 拒絕）；也涵蓋不需回覆的事件（貼圖、影片…）
+    if (!reply || !reply.trim()) return;
+    // 用 Array.from 截斷，避免剛好切在 emoji（代理對）中間變亂碼
+    const text = Array.from(reply).slice(0, 5000).join('');
     await lineClient.replyMessage({
       replyToken: event.replyToken,
-      messages: [{ type: 'text', text: reply.slice(0, 5000) }],
+      messages: [{ type: 'text', text }],
     });
   } catch (err) {
     console.error('回覆訊息失敗：', err);

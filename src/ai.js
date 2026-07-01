@@ -6,14 +6,40 @@ const groq = new Groq({ apiKey: config.groq.apiKey });
 
 // 從 Groq tool_use_failed 的 failed_generation（形如 <function=NAME{...JSON...}</function>）
 // 解析出模型「本來想呼叫的工具」，救回成正規 tool_calls。
+// 用「括號配對」找出 JSON（容忍 JSON 後有雜訊文字、字串內含大括號、多個 function），
+// 而非脆弱的非貪婪正則。
 function parseFailedToolCalls(text) {
   const calls = [];
   if (!text) return calls;
-  const re = /<function=([a-zA-Z0-9_]+)[\s\S]*?(\{[\s\S]*?\})\s*<\/function>/g;
+  const nameRe = /<function=([a-zA-Z0-9_]+)/g;
   let m;
   let i = 0;
-  while ((m = re.exec(text))) {
-    calls.push({ id: `recovered_${i++}`, type: 'function', function: { name: m[1], arguments: m[2] } });
+  while ((m = nameRe.exec(text))) {
+    const name = m[1];
+    const start = text.indexOf('{', nameRe.lastIndex);
+    if (start === -1) continue;
+    // 括號配對找出對應的 }（略過字串內的大括號）
+    let depth = 0;
+    let end = -1;
+    let inStr = false;
+    let esc = false;
+    for (let j = start; j < text.length; j++) {
+      const ch = text[j];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}' && --depth === 0) { end = j; break; }
+    }
+    if (end === -1) continue; // JSON 被截斷，跳過
+    const argsJson = text.slice(start, end + 1);
+    try {
+      JSON.parse(argsJson); // 確認可解析才收
+      calls.push({ id: `recovered_${i++}`, type: 'function', function: { name, arguments: argsJson } });
+    } catch {
+      /* 這段壞掉就跳過，不影響其他段 */
+    }
   }
   return calls;
 }
@@ -93,16 +119,21 @@ async function chat(history, opts = {}) {
  * 翻譯、食譜建議等「不需要對話記憶」的功能用這個。
  */
 async function ask(systemPrompt, userText) {
-  const completion = await groq.chat.completions.create({
-    model: config.groq.model,
-    max_tokens: 1024,
-    temperature: 0.7,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userText },
-    ],
-  });
-  return completion.choices?.[0]?.message?.content?.trim() || '';
+  try {
+    const completion = await groq.chat.completions.create({
+      model: config.groq.model,
+      max_tokens: 1024,
+      temperature: 0.7,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userText },
+      ],
+    });
+    return completion.choices?.[0]?.message?.content?.trim() || '';
+  } catch (e) {
+    console.error('ai.ask 失敗：', e.message); // 例如 Groq 429/網路錯誤；讓上層走既有 fallback
+    return '';
+  }
 }
 
 /**
@@ -110,20 +141,20 @@ async function ask(systemPrompt, userText) {
  * @returns {Promise<object|null>}
  */
 async function askJSON(systemPrompt, userText) {
-  const completion = await groq.chat.completions.create({
-    model: config.groq.model,
-    max_tokens: 512,
-    temperature: 0,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userText },
-    ],
-  });
   try {
+    const completion = await groq.chat.completions.create({
+      model: config.groq.model,
+      max_tokens: 512,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userText },
+      ],
+    });
     return JSON.parse(completion.choices?.[0]?.message?.content || '');
   } catch {
-    return null;
+    return null; // Groq 錯誤或 JSON 解析失敗都回 null，上層自行處理
   }
 }
 
@@ -133,12 +164,17 @@ async function askJSON(systemPrompt, userText) {
  * @returns {Promise<string>}
  */
 async function transcribe(buffer) {
-  const file = await toFile(buffer, 'audio.m4a');
-  const result = await groq.audio.transcriptions.create({
-    file,
-    model: config.groq.whisperModel,
-  });
-  return (result.text || '').trim();
+  try {
+    const file = await toFile(buffer, 'audio.m4a');
+    const result = await groq.audio.transcriptions.create({
+      file,
+      model: config.groq.whisperModel,
+    });
+    return (result.text || '').trim();
+  } catch (e) {
+    console.error('ai.transcribe 失敗：', e.message);
+    return ''; // 上層會回「我聽不太清楚」
+  }
 }
 
 const VISION_PROMPT =
@@ -154,21 +190,26 @@ const VISION_PROMPT =
  * @returns {Promise<string>}
  */
 async function vision(buffer, mediaType, prompt) {
-  const dataUrl = `data:${mediaType};base64,${buffer.toString('base64')}`;
-  const completion = await groq.chat.completions.create({
-    model: config.groq.visionModel,
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt || VISION_PROMPT },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ],
-      },
-    ],
-  });
-  return completion.choices?.[0]?.message?.content?.trim() || '';
+  try {
+    const dataUrl = `data:${mediaType};base64,${buffer.toString('base64')}`;
+    const completion = await groq.chat.completions.create({
+      model: config.groq.visionModel,
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt || VISION_PROMPT },
+            { type: 'image_url', image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+    });
+    return completion.choices?.[0]?.message?.content?.trim() || '';
+  } catch (e) {
+    console.error('ai.vision 失敗：', e.message);
+    return ''; // 上層會回「我看不太懂這張圖」
+  }
 }
 
 module.exports = { chat, ask, askJSON, transcribe, vision };

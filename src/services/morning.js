@@ -54,15 +54,35 @@ async function sendAll() {
   }
 }
 
-let lastSent = '';
-function start() {
-  setInterval(async () => {
+// 「今天已送」狀態持久化到檔案，避免伺服器重啟後同日重複推播或漏送（P1-4）
+const STATE_FILE = 'morning-state.json';
+function getLastSent() {
+  const s = store.load(STATE_FILE);
+  return (s && s.lastSent) || '';
+}
+
+let ticking = false;
+async function tick() {
+  if (ticking) return; // 防重入（P0-2）
+  ticking = true;
+  try {
     const t = store.taipei();
-    if (t.hm === config.morningTime && lastSent !== t.date) {
-      lastSent = t.date;
+    // 今天尚未送、且現在時間已到（>= 設定時間）就送：即使伺服器在設定的那分鐘
+    // 沒醒著（休眠/重啟），醒來後仍會補送，並以檔案記錄去重。
+    if (t.hm >= config.morningTime && getLastSent() !== t.date) {
+      store.save(STATE_FILE, { lastSent: t.date });
       await sendAll();
     }
-  }, 30 * 1000);
+  } catch (e) {
+    console.error('早安推播排程錯誤：', e.message);
+  } finally {
+    ticking = false;
+    setTimeout(tick, 30 * 1000);
+  }
+}
+
+function start() {
+  setTimeout(tick, 30 * 1000);
   console.log(`☀️ 早安推播排程已啟動（每天 ${config.morningTime}）`);
 }
 

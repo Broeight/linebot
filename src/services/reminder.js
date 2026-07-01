@@ -81,6 +81,9 @@ async function add(userId, text) {
   if (!fireAt) {
     return '我看不懂時間 😅 請說清楚日期時間，例如「明天下午3點」。';
   }
+  if (fireAt <= Date.now()) {
+    return '那個時間已經過了 🙏 請設定一個未來的時間。';
+  }
   list.push({ id, userId, type: 'once', fireAt, message: r.message });
   save(list);
   const when = (r.datetime || '').slice(5); // 去掉年份，顯示 MM-DD HH:mm
@@ -104,7 +107,7 @@ function addParsed(userId, p) {
     return { ok: true, when: `every day ${hm}` };
   }
   const fireAt = taipeiToEpoch(p.datetime || '');
-  if (!fireAt) return { ok: false };
+  if (!fireAt || fireAt <= Date.now()) return { ok: false }; // 無法解析或時間已過
   list.push({ id, userId, type: 'once', fireAt, message: p.message });
   save(list);
   return { ok: true, when: p.datetime };
@@ -164,29 +167,47 @@ async function push(userId, message) {
   }
 }
 
-// 每 30 秒檢查一次到期的提醒
-function start() {
-  setInterval(async () => {
+// 提醒排程：用「自我排程 setTimeout + 防重入旗標」取代 setInterval，
+// 避免 callback 重疊造成重複推播（P0-2）；推播完成後「重新載入」再依 id 套用
+// 變更，避免覆蓋這段期間 webhook 新增的提醒（P0-1 資料競態）。
+let ticking = false;
+
+async function tick() {
+  if (ticking) return; // 防重入
+  ticking = true;
+  try {
     const now = taipeiParts();
     const nowMs = Date.now();
-    let changed = false;
-    const list = load();
+    const firedOnce = [];
+    const firedDaily = [];
 
-    for (const r of list) {
-      if (r.type === 'once' && r.fireAt <= nowMs && !r._done) {
-        r._done = true;
+    for (const r of load()) {
+      if (r.type === 'once' && r.fireAt <= nowMs) {
         await push(r.userId, r.message);
-        changed = true;
+        firedOnce.push(r.id);
       } else if (r.type === 'daily' && r.dailyTime === now.hm && r.lastFired !== now.date) {
-        r.lastFired = now.date;
         await push(r.userId, r.message);
-        changed = true;
+        firedDaily.push(r.id);
       }
     }
 
-    const kept = list.filter((r) => !r._done); // 一次性提醒送出後移除
-    if (changed || kept.length !== list.length) save(kept);
-  }, 30 * 1000);
+    if (firedOnce.length || firedDaily.length) {
+      // 重新載入最新資料，只依 id 套用「已送」狀態，不整包覆寫
+      const fresh = load()
+        .filter((r) => !firedOnce.includes(r.id))
+        .map((r) => (firedDaily.includes(r.id) ? { ...r, lastFired: now.date } : r));
+      save(fresh);
+    }
+  } catch (e) {
+    console.error('提醒排程錯誤：', e.message);
+  } finally {
+    ticking = false;
+    setTimeout(tick, 30 * 1000); // 前一輪完成後才排下一輪
+  }
+}
+
+function start() {
+  setTimeout(tick, 30 * 1000);
   console.log('⏰ 提醒排程已啟動');
 }
 

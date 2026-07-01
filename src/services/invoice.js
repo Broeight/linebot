@@ -20,7 +20,20 @@ async function fetchLatest() {
   // 中獎號碼兩個月才更新一次，快取 1 小時避免重複抓取
   if (cache.data && Date.now() - cache.at < 60 * 60 * 1000) return cache.data;
 
-  const xml = await (await fetch(FEED_URL)).text();
+  // 帶 5 秒逾時；來源故障/逾時回 null（上層已能處理 null）
+  let xml;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(FEED_URL, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    xml = await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+
   const item = xml.match(/<item>([\s\S]*?)<\/item>/);
   if (!item) return null;
   const block = item[1];

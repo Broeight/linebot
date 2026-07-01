@@ -27,14 +27,28 @@ const WMO = {
   99: '⛈ 強雷雨伴冰雹',
 };
 
+// 帶 5 秒逾時的 JSON 抓取；逾時／連線失敗／非 200 一律回 null（比照其他服務）
+async function fetchJson(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 用 Open-Meteo 地理編碼把地名轉成經緯度，找不到時回傳 null。
 async function geocode(name) {
   const url =
     'https://geocoding-api.open-meteo.com/v1/search' +
     `?name=${encodeURIComponent(name)}&count=1&language=zh&format=json`;
-  const res = await fetch(url);
-  const data = await res.json();
-  return data.results && data.results.length > 0 ? data.results[0] : null;
+  const data = await fetchJson(url);
+  return data?.results?.length ? data.results[0] : null;
 }
 
 async function getWeather(city) {
@@ -60,9 +74,9 @@ async function getWeather(city) {
     'https://api.open-meteo.com/v1/forecast' +
     `?latitude=${place.latitude}&longitude=${place.longitude}` +
     '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m';
-  const wRes = await fetch(wUrl);
-  const w = await wRes.json();
-  const c = w.current;
+  const w = await fetchJson(wUrl);
+  const c = w?.current;
+  if (!c) return '目前無法取得天氣資料，請稍後再試 🙏';
 
   const desc = WMO[c.weather_code] || '🌈 天氣狀況未知';
   const name = [place.name, place.country].filter(Boolean).join('、');
@@ -100,9 +114,10 @@ async function getForecastSummary(city) {
     '&current=temperature_2m,relative_humidity_2m,weather_code' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max' +
     '&timezone=auto&forecast_days=3';
-  const w = await (await fetch(url)).json();
-  const c = w.current;
-  const d = w.daily || {};
+  const w = await fetchJson(url);
+  const c = w?.current;
+  const d = w?.daily;
+  if (!c || !d || !Array.isArray(d.time)) return null; // 取不到就回 null，交給 AI 工具處理
   const name = [place.name, place.country].filter(Boolean).join(', ');
   const labels = ['Today', 'Tomorrow', 'Day after'];
   const days = (d.time || []).map(
