@@ -10,6 +10,7 @@ const expense = require('./services/expense');
 const { checkInvoice } = require('./services/invoice');
 const { getHolidaySummary } = require('./services/holiday');
 const { getFuelPriceSummary } = require('./services/fuelPrice');
+const { getTraTrainSummary } = require('./services/traTrain');
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -151,6 +152,25 @@ const defs = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_tra_train',
+      description:
+        '查詢台灣台鐵（TRA）某起站到迄站、今天當下時間之後的火車班次時刻。'
+        + '當使用者用任何語言（尤其越南語）詢問台鐵/火車從某站到某站的班次、'
+        + '下一班車幾點時呼叫。僅限台鐵、僅限今天當下之後的班次。',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: '起站中文站名，如「台北」「臺北」「花蓮」。越南語/拼音也盡量轉成中文站名。' },
+          to:   { type: 'string', description: '迄站中文站名，如「台中」「高雄」。' },
+          next_only: { type: 'boolean', description: '若使用者問「下一班/最近一班」設 true（只回 1 筆）；問「班次/有哪些車」設 false 或不填。' },
+        },
+        required: ['from', 'to'],
+      },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -158,8 +178,9 @@ function timeContext() {
   const t = store.taipei();
   return (
     `背景：現在台北時間是 ${t.date} ${t.hm}。` +
-    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎、查天氣、查匯率、查台灣放假/連假或查台灣油價（汽油／柴油），就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。' +
-    '若使用者用任何語言詢問台灣油價、汽油、柴油，就呼叫 get_fuel_price 工具。'
+    '若使用者用任何語言（含越南語）要求設提醒、記帳、對獎、查天氣、查匯率、查台灣放假/連假、查台灣油價（汽油／柴油）或查台鐵火車時刻，就呼叫對應工具完成，再用對方的語言確認；其他問題正常用知識回答即可。' +
+    '若使用者用任何語言詢問台灣油價、汽油、柴油，就呼叫 get_fuel_price 工具。' +
+    '若使用者用任何語言（含越南語）詢問台鐵/火車從某站到某站的班次、下一班車，就呼叫 get_tra_train 工具（傳中文站名）。'
   );
 }
 
@@ -211,6 +232,11 @@ async function run(userId, name, argsJson) {
         return (
           (await getFuelPriceSummary(a.product)) ||
           'Cannot fetch Taiwan CPC fuel price right now.'
+        );
+      case 'get_tra_train':
+        return (
+          (await getTraTrainSummary({ from: a.from, to: a.to, nextOnly: a.next_only === true })) ||
+          'Cannot fetch Taiwan railway (TRA) timetable right now.'
         );
       default:
         return `Unknown tool: ${name}`;

@@ -17,6 +17,7 @@ const expense = require('./services/expense');
 const exchangeRate = require('./services/exchangeRate');
 const holiday = require('./services/holiday');
 const fuelPrice = require('./services/fuelPrice');
+const traTrain = require('./services/traTrain');
 const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
@@ -38,6 +39,7 @@ function helpText() {
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
     '⛽ 油價：「油價」「95油價」「柴油油價」\n' +
+    '🚆 台鐵：「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
     '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
     '🧾 發票對獎：「對獎 12345678」\n' +
     '🍳 吃什麼：「今天吃什麼」｜食譜：「食譜 番茄炒蛋」\n' +
@@ -157,6 +159,22 @@ async function handleText(userId, text) {
   // 3) 全部四種：油價 / 今天油價 / 本週油價 / 這週油價 / 當週油價
   if (/^(?:油價|今天油價|本週油價|這週油價|當週油價)$/.test(trimmed)) {
     return fuelPrice.lookup();
+  }
+
+  // ── 台鐵火車時刻 ─────────────────────────────────────────
+  // 1) 台鐵時刻查詢 → 使用說明子選單
+  if (/^(?:台鐵|臺鐵|火車)查詢$/.test(trimmed)) {
+    return traTrain.usage();
+  }
+  // 2) 下一班 <起>到<迄> 或 下一班 <起> <迄>
+  const nextTrainMatch = trimmed.match(/^下一班\s*(.+)$/);
+  if (nextTrainMatch) {
+    return traTrain.nextTrain(nextTrainMatch[1].trim());
+  }
+  // 3) 台鐵/臺鐵/火車 <起> <迄>
+  const traMatch = trimmed.match(/^(?:台鐵|臺鐵|火車)\s+(.+)$/);
+  if (traMatch) {
+    return traTrain.lookup(traMatch[1].trim());
   }
 
   // ── 發票對獎 ─────────────────────────────────────────
