@@ -5,7 +5,9 @@
 //
 // 對外匯出：lookup、nextTrain、usage（中文指令用）
 //           getTraTrainSummary（AI 工具用，回英文）
-//           normalizeStation、filterAndSort、duration、STATIONS（供離線測試）
+//           suggestStations（模糊比對相近站名，供選單流程用）
+//           getTraTrainByIds（以站碼直接查時刻，供 pending 完成查詢用，回中文字串）
+//           normalizeStation、fetchStations、VN_ALIAS、toAscii、filterAndSort、duration、STATIONS（供離線測試）
 
 const store = require('../store');
 
@@ -431,6 +433,196 @@ async function getTraTrainSummary({ from, to, nextOnly, day }) {
   );
 }
 
+// ── 對外函式：相近站名選單流程用 ────────────────────────────────────────
+
+/**
+ * 標準 Levenshtein 編輯距離（DP），字串長度都很短，成本可忽略。私有純函式。
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+function lev(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,      // 刪除
+        dp[i][j - 1] + 1,      // 新增
+        dp[i - 1][j - 1] + cost // 取代
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * 對單一表面字串 surf 與正規化 query q 計分（0–100，越高越像）。私有純函式。
+ * @param {string} q
+ * @param {string} surf
+ * @returns {number}
+ */
+function scoreSurface(q, surf) {
+  if (!surf) return 0;
+  if (q === surf) return 100; // 完全相等（正常會被 normalizeStation 先攔截，仍保留以防萬一）
+  const shorter = Math.min(q.length, surf.length);
+  if ((surf.startsWith(q) || q.startsWith(surf)) && shorter >= 2) {
+    return 90 - Math.abs(q.length - surf.length);
+  }
+  if (q.length >= 3 && (surf.includes(q) || q.includes(surf))) {
+    return 75;
+  }
+  const d = lev(q, surf);
+  const maxLen = Math.max(q.length, surf.length) || 1;
+  const sim = 1 - d / maxLen;
+  if (sim >= 0.5) return 50 + Math.round(sim * 40);
+  return 0;
+}
+
+// VN_ALIAS 反查表（值＝中文站名 → 別名 key 陣列），模組載入時建立一次，供 suggestStations 用
+const VN_ALIAS_REVERSE = {};
+for (const [aliasKey, zhName] of Object.entries(VN_ALIAS)) {
+  if (!VN_ALIAS_REVERSE[zhName]) VN_ALIAS_REVERSE[zhName] = [];
+  VN_ALIAS_REVERSE[zhName].push(aliasKey);
+}
+
+/**
+ * 模糊比對相近的真實車站，供「站名無法精準辨識」時給使用者選。
+ * 呼叫端應先跑 normalizeStation，精準命中就不要呼叫本函式（PRD 驗收 §1）。
+ * @param {string} token 使用者說/打的單一站名片段（走音、不完整、拼音、中英越皆可能）
+ * @param {number} [max=5] 最多回傳幾筆
+ * @returns {Promise<Array<{name:string, id:string}>>}
+ */
+async function suggestStations(token, max = 5) {
+  if (!token || !String(token).trim()) return [];
+  const aliasKey = String(token).trim().replace(/臺/g, '台');
+  const t = aliasKey.replace(/(車站|站)$/, '').trim();
+  if (!t) return [];
+  const q = toAscii(t).replace(/\s+/g, '');
+  if (!q) return [];
+
+  const maps = await fetchStations();
+  // 表面字串集合：id → { name, surfaces: Set<string> }
+  const stationSurfaces = new Map();
+
+  function addSurface(name, id, surf) {
+    if (!name || !id || !surf) return;
+    let entry = stationSurfaces.get(id);
+    if (!entry) {
+      entry = { name, surfaces: new Set() };
+      stationSurfaces.set(id, entry);
+    }
+    entry.surfaces.add(surf);
+  }
+
+  if (maps) {
+    // 中文站名
+    for (const [zhName, info] of Object.entries(maps.zh)) {
+      addSurface(zhName, info.id, toAscii(zhName).replace(/\s+/g, ''));
+    }
+    // 英文站名
+    for (const [enName, info] of Object.entries(maps.en)) {
+      addSurface(info.name, info.id, enName.replace(/\s+/g, ''));
+    }
+    // 越南語漢越音別名（反查掛到對應中文站）
+    for (const [zhName, aliases] of Object.entries(VN_ALIAS_REVERSE)) {
+      const info = maps.zh[zhName];
+      if (!info) continue;
+      for (const alias of aliases) addSurface(zhName, info.id, toAscii(alias).replace(/\s+/g, ''));
+    }
+  } else {
+    // 抓不到清單時退回內建 STATIONS 主要站
+    for (const [zhName, id] of Object.entries(STATIONS)) {
+      addSurface(zhName, id, toAscii(zhName).replace(/\s+/g, ''));
+    }
+    for (const [zhName, aliases] of Object.entries(VN_ALIAS_REVERSE)) {
+      const id = STATIONS[zhName];
+      if (!id) continue;
+      for (const alias of aliases) addSurface(zhName, id, toAscii(alias).replace(/\s+/g, ''));
+    }
+  }
+
+  const results = [];
+  for (const [id, entry] of stationSurfaces.entries()) {
+    let best = 0;
+    for (const surf of entry.surfaces) {
+      const s = scoreSurface(q, surf);
+      if (s > best) best = s;
+    }
+    if (best > 0) results.push({ name: entry.name, id, score: best });
+  }
+
+  results.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.name.length !== b.name.length) return a.name.length - b.name.length;
+    return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+  });
+
+  return results.slice(0, max).map((r) => ({ name: r.name, id: r.id }));
+}
+
+/**
+ * 以站碼（非站名）直接查詢起訖站班次，回傳已格式化的中文字串（同 lookup／nextTrain 風格）。
+ * 供 pending 選站完成後直接用站碼查詢，避免再走一次 normalizeStation。
+ * @param {{fromId:string, toId:string, fromName:string, toName:string, nextOnly?:boolean, day?:string}} opts
+ * @returns {Promise<string>}
+ */
+async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day }) {
+  const t0 = store.taipei();
+  const isTomorrow = day === 'tomorrow';
+  const date = isTomorrow ? addOneDay(t0.date) : t0.date;
+  const fromHm = isTomorrow ? '00:00' : t0.hm; // 明天→整天班次；今天→現在之後
+  const mmdd = `${date.slice(5, 7)}/${date.slice(8, 10)}`;
+  const whenZh = isTomorrow ? '明天' : '今天';
+
+  let result;
+  try {
+    result = await fetchOdTrains(fromId, toId, date);
+  } catch (_e) {
+    return '目前無法取得台鐵時刻，請稍後再試 🙏';
+  }
+
+  if (!result.ok) {
+    return '目前無法取得台鐵時刻，請稍後再試 🙏';
+  }
+
+  const limit = nextOnly ? 1 : MAX_RESULTS;
+  const trains = filterAndSort(result.trains, fromHm, limit);
+
+  if (nextOnly) {
+    if (trains.length === 0) {
+      return `🚆 下一班 ${fromName} → ${toName}\n${whenZh}已無班次`;
+    }
+    const t = trains[0];
+    return (
+      `🚆 下一班 ${fromName} → ${toName}（${mmdd}）\n` +
+      `・${t.trainNo}次 ${t.typeZh}　${t.departure} 發車，${t.arrival} 抵達（${duration(t.departure, t.arrival)}）\n\n` +
+      `資料來源：${SOURCE}`
+    );
+  }
+
+  if (trains.length === 0) {
+    return `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n${whenZh}已無班次`;
+  }
+
+  const lines = trains.map(
+    (t) => `・${t.trainNo}次 ${t.typeZh}　${t.departure}→${t.arrival}（${duration(t.departure, t.arrival)}）`
+  );
+
+  return (
+    `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n` +
+    `${whenZh} ${fromHm} 之後的班次：\n\n` +
+    lines.join('\n') + '\n\n' +
+    `資料來源：${SOURCE}`
+  );
+}
+
 // ── 匯出 ──────────────────────────────────────────────────────────────
 module.exports = {
   // 中文指令用
@@ -439,8 +631,14 @@ module.exports = {
   usage,
   // AI 工具用
   getTraTrainSummary,
+  // 相近站名選單流程用
+  suggestStations,
+  getTraTrainByIds,
   // 供離線測試（純函式／表）
   normalizeStation,
+  fetchStations,
+  VN_ALIAS,
+  toAscii,
   filterAndSort,
   duration,
   STATIONS,

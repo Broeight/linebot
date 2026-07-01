@@ -35,6 +35,16 @@ const REMINDER_PREFIX = {
   id: '⏰ Pengingat: ',
 };
 
+// 台鐵選站選單提示句（「您是指哪一站？」）各語言版本
+const CHOOSE_STATION_PROMPT = {
+  'zh-TW': '請問您是指哪一站？請點選下方按鈕，或直接輸入站名。',
+  vi: 'Bạn muốn hỏi ga nào? Hãy bấm nút bên dưới hoặc nhập tên ga.',
+  en: 'Which station did you mean? Please tap a button below, or type the station name.',
+  ja: 'どちらの駅のことですか？下のボタンを押すか、駅名を入力してください。',
+  th: 'คุณหมายถึงสถานีไหน? กรุณากดปุ่มด้านล่าง หรือพิมพ์ชื่อสถานี',
+  id: 'Stasiun mana yang Anda maksud? Silakan ketuk tombol di bawah, atau ketik nama stasiun.',
+};
+
 // 手動切換語言時的確認訊息（用該語言回）
 const CONFIRM = {
   'zh-TW': '✅ 已將你的語言設為繁體中文。',
@@ -148,6 +158,11 @@ function reminderPrefix(code) {
   return REMINDER_PREFIX[code] || REMINDER_PREFIX['zh-TW'];
 }
 
+// 台鐵選站選單提示句（「您是指哪一站？」），供 handler 附 quickReply 時使用
+function chooseStationPrompt(code) {
+  return CHOOSE_STATION_PROMPT[code] || CHOOSE_STATION_PROMPT['zh-TW'];
+}
+
 module.exports = {
   noteText,
   resolve,
@@ -158,4 +173,5 @@ module.exports = {
   visionPrompt,
   audioPrefix,
   reminderPrefix,
+  chooseStationPrompt,
 };
