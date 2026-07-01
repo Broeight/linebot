@@ -10,7 +10,8 @@ const expense = require('./services/expense');
 const { checkInvoice } = require('./services/invoice');
 const { getHolidaySummary } = require('./services/holiday');
 const { getFuelPriceSummary } = require('./services/fuelPrice');
-const { getTraTrainSummary } = require('./services/traTrain');
+const { getTraTrainSummary, normalizeStation, suggestStations, getTraTrainByIds } = require('./services/traTrain');
+const traChoice = require('./services/traChoice');
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -242,15 +243,51 @@ async function run(userId, name, argsJson) {
           (await getFuelPriceSummary(a.product)) ||
           'Cannot fetch Taiwan CPC fuel price right now.'
         );
-      case 'get_tra_train':
+      case 'get_tra_train': {
+        const nextOnly = a.next_only === true;
+        const day = a.day === 'tomorrow' ? 'tomorrow' : 'today';
+        const fromSt = await normalizeStation(a.from);
+        const toSt = await normalizeStation(a.to);
+
+        // 兩站都精準辨識 → 照舊走既有摘要（完全不回歸）
+        if (fromSt && toSt) {
+          return (
+            (await getTraTrainSummary({ from: a.from, to: a.to, nextOnly, day })) ||
+            'Cannot fetch Taiwan railway (TRA) timetable right now.'
+          );
+        }
+
+        // 恰一站不精準（另一站精準）→ 模糊比對找相近候選
+        if (fromSt || toSt) {
+          const knownSt = fromSt || toSt;
+          const knownRole = fromSt ? 'from' : 'to';
+          const badToken = fromSt ? a.to : a.from;
+          const candidates = await suggestStations(badToken, 5);
+
+          if (candidates.length >= 1) {
+            traChoice.set(userId, {
+              known: { role: knownRole, name: knownSt.name, id: knownSt.id },
+              ambiguousRole: knownRole === 'from' ? 'to' : 'from',
+              candidates,
+              nextOnly,
+              day,
+            });
+            return (
+              `NEEDS_STATION_CHOICE: Asked the user to pick the correct station for "${badToken}". ` +
+              'Do not guess or invent a station; a button menu will be shown. ' +
+              'Reply briefly acknowledging you need them to choose.'
+            );
+          }
+
+          return `Station not recognized: "${badToken}". Ask the user for a valid Taiwan Railway station name (Chinese or English, e.g. 台北/Taipei, 中壢/Zhongli).`;
+        }
+
+        // 兩站都不精準（edge case）→ 第一版不做雙輪選單，請使用者分別給明確站名
         return (
-          (await getTraTrainSummary({
-            from: a.from,
-            to: a.to,
-            nextOnly: a.next_only === true,
-            day: a.day === 'tomorrow' ? 'tomorrow' : 'today',
-          })) || 'Cannot fetch Taiwan railway (TRA) timetable right now.'
+          'Neither station could be recognized. Ask the user to clearly state both the departure ' +
+          'and arrival Taiwan Railway station names (Chinese or English).'
         );
+      }
       default:
         return `Unknown tool: ${name}`;
     }

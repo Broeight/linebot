@@ -18,9 +18,24 @@ const exchangeRate = require('./services/exchangeRate');
 const holiday = require('./services/holiday');
 const fuelPrice = require('./services/fuelPrice');
 const traTrain = require('./services/traTrain');
+const traChoice = require('./services/traChoice');
 const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
+
+/**
+ * 把候選站名清單組成 LINE Quick Reply 物件（≤5 顆，label/text 皆用中文站名）。
+ * @param {Array<{name:string, id:string}>} candidates
+ * @returns {{items: Array}}
+ */
+function buildQuickReply(candidates) {
+  return {
+    items: candidates.slice(0, 5).map((c) => ({
+      type: 'action',
+      action: { type: 'message', label: c.name.slice(0, 20), text: c.name },
+    })),
+  };
+}
 
 function helpText() {
   return (
@@ -49,16 +64,32 @@ function helpText() {
 }
 
 /**
- * 處理一則文字訊息，回傳要回給使用者的字串。
+ * 處理一則文字訊息，回傳要回給使用者的字串，或 { text, quickReply } 附選站按鈕。
  * @param {string} userId  LINE 使用者 ID（用來區分各自的對話與提醒）
  * @param {string} text    使用者傳來的文字
- * @returns {Promise<string>}
+ * @returns {Promise<string|{text:string, quickReply:object}>}
  */
 async function handleText(userId, text) {
   const trimmed = text.trim();
 
   // 追蹤這位使用者慣用的語言（用於照片描述、語音前綴等）
   lang.noteText(userId, trimmed);
+
+  // ── 台鐵選站 pending 攔截（在所有指令路由之前）──────────────────
+  // 使用者點按鈕 / 打站名 / 回數字，命中就直接完成查詢並清 pending。
+  const chosen = traChoice.matchCandidate(userId, trimmed);
+  if (chosen) {
+    const pendingChoice = traChoice.get(userId);
+    if (pendingChoice) {
+      const { known, ambiguousRole, nextOnly, day } = pendingChoice;
+      const fromId = ambiguousRole === 'from' ? chosen.id : known.id;
+      const fromName = ambiguousRole === 'from' ? chosen.name : known.name;
+      const toId = ambiguousRole === 'to' ? chosen.id : known.id;
+      const toName = ambiguousRole === 'to' ? chosen.name : known.name;
+      traChoice.clear(userId);
+      return traTrain.getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day });
+    }
+  }
 
   // ── 基本指令 ─────────────────────────────────────────
   if (trimmed === '/reset' || trimmed === '重置' || trimmed === '清除對話') {
@@ -235,10 +266,18 @@ async function handleText(userId, text) {
     systemExtra: tools.timeContext(),
   });
   conversation.append(userId, 'assistant', reply);
+
+  // 本回合剛因歧義建立 pending → 覆寫模型文字，改回選站提示 + quickReply 按鈕
+  if (traChoice.consumeFresh(userId)) {
+    const p = traChoice.get(userId);
+    const code = await lang.resolve(userId);
+    return { text: lang.chooseStationPrompt(code), quickReply: buildQuickReply(p.candidates) };
+  }
+
   return reply;
 }
 
-/** 處理語音訊息：轉文字後，當作一般訊息處理。 */
+/** 處理語音訊息：轉文字後，當作一般訊息處理。回傳字串，或 { text, quickReply }（按鈕原封不動穿透）。 */
 async function handleAudio(userId, messageId) {
   let buf;
   try {
@@ -252,9 +291,14 @@ async function handleAudio(userId, messageId) {
     return '我聽不太清楚，可以再說一次、或直接打字給我嗎？';
   }
   // handleText 會順便依這段話更新使用者語言，所以先處理再取語言
-  const answer = await handleText(userId, text);
+  const answer = await handleText(userId, text); // 可能是 string 或 {text, quickReply}
   const code = await lang.resolve(userId);
-  return `${lang.audioPrefix(code)}「${text}」\n\n${answer}`;
+  const prefix = `${lang.audioPrefix(code)}「${text}」\n\n`;
+  if (answer && typeof answer === 'object' && answer.quickReply) {
+    // 語音前綴只包 text，quickReply 按鈕原封不動穿透（不可因語音前綴而遺失）
+    return { text: prefix + answer.text, quickReply: answer.quickReply };
+  }
+  return prefix + (typeof answer === 'string' ? answer : (answer && answer.text) || '');
 }
 
 /** 處理圖片訊息：辨識內容 / 讀字 / 翻譯。 */
@@ -275,7 +319,11 @@ async function handleImage(userId, messageId) {
   return desc;
 }
 
-/** 依訊息類型分派；回傳要回覆的字串，或 null（不回覆）。 */
+/**
+ * 依訊息類型分派；回傳要回覆的字串、{ text, quickReply }，或 null（不回覆）。
+ * @param {object} event
+ * @returns {Promise<string|{text:string, quickReply:object}|null>}
+ */
 async function replyForEvent(event) {
   if (event.type !== 'message') return null;
   const userId = event.source?.userId;
