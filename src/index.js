@@ -5,6 +5,7 @@ assertConfig();
 
 const { line, client: lineClient } = require('./line');
 const handler = require('./handler');
+const lang = require('./lang');
 const reminder = require('./services/reminder');
 const morning = require('./services/morning');
 
@@ -57,11 +58,18 @@ async function handleEvent(event) {
     });
   } catch (err) {
     console.error('回覆訊息失敗：', err);
-    // 嘗試回一則錯誤訊息（reply token 只能用一次，失敗就放棄）
+    // 盡力依使用者語言回錯誤訊息；解析失敗就用中文（reply token 只能用一次，失敗就放棄）
+    let errText = '抱歉，發生了一點問題，請稍後再試 🙏';
+    try {
+      const userId = event.source?.userId;
+      errText = lang.genericError(userId ? await lang.resolve(userId) : null);
+    } catch {
+      /* 語言解析失敗就用預設中文句 */
+    }
     try {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: 'text', text: '抱歉，發生了一點問題，請稍後再試 🙏' }],
+        messages: [{ type: 'text', text: errText }],
       });
     } catch (e) {
       console.error('連錯誤訊息都送不出去：', e);

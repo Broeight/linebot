@@ -57,11 +57,11 @@ const SYSTEM_PROMPT = `你是一個友善、實用的 LINE 聊天機器人助理
  * 對話：把歷史送給 Groq，並支援工具呼叫。
  * tools（工具定義）與 runTool（執行器）由呼叫端提供，避免循環相依。
  * @param {Array<{role:string, content:string}>} history
- * @param {{tools?:Array, runTool?:Function, systemExtra?:string}} [opts]
+ * @param {{tools?:Array, runTool?:Function, systemExtra?:string, fallbackText?:string}} [opts]
  * @returns {Promise<string>}
  */
 async function chat(history, opts = {}) {
-  const { tools, runTool, systemExtra } = opts;
+  const { tools, runTool, systemExtra, fallbackText } = opts;
   const system = SYSTEM_PROMPT + (systemExtra ? '\n\n' + systemExtra : '');
   const messages = [{ role: 'system', content: system }, ...history];
   const base = { model: config.groq.model, max_tokens: 1024, temperature: 0.7 };
@@ -95,23 +95,30 @@ async function chat(history, opts = {}) {
     }
   }
 
-  let resp = await complete();
-  let msg = resp.choices?.[0]?.message;
+  // 任何 Groq 失敗（401/429/5xx/逾時/斷網）都不往上丟，回本地化 fallback 句，
+  // 與 ask/askJSON/transcribe/vision 的容錯模式一致（P0-3 稽核同類修法）。
+  try {
+    let resp = await complete();
+    let msg = resp.choices?.[0]?.message;
 
-  // 工具呼叫迴圈（最多 4 輪，避免無限迴圈）
-  let rounds = 0;
-  while (msg?.tool_calls?.length && runTool && rounds < 4) {
-    messages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
-    for (const tc of msg.tool_calls) {
-      const result = await runTool(tc.function.name, tc.function.arguments);
-      messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+    // 工具呼叫迴圈（最多 4 輪，避免無限迴圈）
+    let rounds = 0;
+    while (msg?.tool_calls?.length && runTool && rounds < 4) {
+      messages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
+      for (const tc of msg.tool_calls) {
+        const result = await runTool(tc.function.name, tc.function.arguments);
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+      }
+      resp = await complete();
+      msg = resp.choices?.[0]?.message;
+      rounds++;
     }
-    resp = await complete();
-    msg = resp.choices?.[0]?.message;
-    rounds++;
-  }
 
-  return msg?.content?.trim() || '抱歉，我現在無法回覆，請稍後再試。';
+    return msg?.content?.trim() || fallbackText || '抱歉，我現在無法回覆，請稍後再試。';
+  } catch (e) {
+    console.error('AI 對話失敗：', e.message);
+    return fallbackText || '抱歉，我現在無法回覆，請稍後再試。';
+  }
 }
 
 /**

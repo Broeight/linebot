@@ -59,6 +59,40 @@ function toAscii(s) {
   return String(s).toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
+// ── getTraTrainByIds 本地化小表（僅供本檔使用；zh-TW 維持原字串不變）─────
+// 「今天/明天」字樣
+const WHEN_LABEL = {
+  'zh-TW': { today: '今天', tomorrow: '明天' },
+  vi: { today: 'hôm nay', tomorrow: 'ngày mai' },
+  en: { today: 'today', tomorrow: 'tomorrow' },
+};
+// 「(今天/明天)已無班次」整句
+const NO_TRAINS = {
+  'zh-TW': (when) => `${when}已無班次`,
+  vi: (when) => `Không còn chuyến tàu nào ${when}.`,
+  en: (when) => `No more trains ${when}.`,
+};
+function whenLabel(code, isTomorrow) {
+  const t = WHEN_LABEL[code] || WHEN_LABEL.en;
+  return isTomorrow ? t.tomorrow : t.today;
+}
+function noTrainsText(code, isTomorrow) {
+  const fn = NO_TRAINS[code] || NO_TRAINS.en;
+  return fn(whenLabel(code, isTomorrow));
+}
+// 行駛時間單位：zh-TW 沿用既有 duration()；vi/en(其餘語言) 另外格式化
+function durationLocalized(code, dep, arr) {
+  if (!code || code === 'zh-TW') return duration(dep, arr);
+  const [dh, dm] = dep.split(':').map(Number);
+  const [ah, am] = arr.split(':').map(Number);
+  let mins = (ah * 60 + am) - (dh * 60 + dm);
+  if (mins < 0) mins += 24 * 60;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (code === 'vi') return `${h} giờ ${m} phút`;
+  return `${h}h${m}m`; // en 與其餘語言回落 en 風格
+}
+
 // 把台北時間日期字串加一天，回傳 'YYYY-MM-DD'
 function addOneDay(dateStr) {
   const d = new Date(`${dateStr}T12:00:00+08:00`);
@@ -568,12 +602,13 @@ async function suggestStations(token, max = 5) {
 }
 
 /**
- * 以站碼（非站名）直接查詢起訖站班次，回傳已格式化的中文字串（同 lookup／nextTrain 風格）。
+ * 以站碼（非站名）直接查詢起訖站班次，回傳已格式化的字串（同 lookup／nextTrain 風格）。
  * 供 pending 選站完成後直接用站碼查詢，避免再走一次 normalizeStation。
- * @param {{fromId:string, toId:string, fromName:string, toName:string, nextOnly?:boolean, day?:string}} opts
+ * @param {{fromId:string, toId:string, fromName:string, toName:string, nextOnly?:boolean, day?:string, code?:string}} opts
  * @returns {Promise<string>}
  */
-async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day }) {
+async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day, code }) {
+  const lc = code || 'zh-TW'; // 缺省 zh-TW，維持既有輸出逐字不變
   const t0 = store.taipei();
   const isTomorrow = day === 'tomorrow';
   const date = isTomorrow ? addOneDay(t0.date) : t0.date;
@@ -597,27 +632,33 @@ async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day 
 
   if (nextOnly) {
     if (trains.length === 0) {
-      return `🚆 下一班 ${fromName} → ${toName}\n${whenZh}已無班次`;
+      return lc === 'zh-TW'
+        ? `🚆 下一班 ${fromName} → ${toName}\n${whenZh}已無班次`
+        : `🚆 下一班 ${fromName} → ${toName}\n${noTrainsText(lc, isTomorrow)}`;
     }
     const t = trains[0];
     return (
       `🚆 下一班 ${fromName} → ${toName}（${mmdd}）\n` +
-      `・${t.trainNo}次 ${t.typeZh}　${t.departure} 發車，${t.arrival} 抵達（${duration(t.departure, t.arrival)}）\n\n` +
+      `・${t.trainNo}次 ${t.typeZh}　${t.departure} 發車，${t.arrival} 抵達（${durationLocalized(lc, t.departure, t.arrival)}）\n\n` +
       `資料來源：${SOURCE}`
     );
   }
 
   if (trains.length === 0) {
-    return `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n${whenZh}已無班次`;
+    return lc === 'zh-TW'
+      ? `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n${whenZh}已無班次`
+      : `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n${noTrainsText(lc, isTomorrow)}`;
   }
 
   const lines = trains.map(
-    (t) => `・${t.trainNo}次 ${t.typeZh}　${t.departure}→${t.arrival}（${duration(t.departure, t.arrival)}）`
+    (t) => `・${t.trainNo}次 ${t.typeZh}　${t.departure}→${t.arrival}（${durationLocalized(lc, t.departure, t.arrival)}）`
   );
+
+  const whenText = lc === 'zh-TW' ? whenZh : whenLabel(lc, isTomorrow);
 
   return (
     `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n` +
-    `${whenZh} ${fromHm} 之後的班次：\n\n` +
+    `${whenText} ${fromHm} 之後的班次：\n\n` +
     lines.join('\n') + '\n\n' +
     `資料來源：${SOURCE}`
   );
