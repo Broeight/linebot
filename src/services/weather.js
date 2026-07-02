@@ -27,6 +27,141 @@ const WMO = {
   99: '⛈ 強雷雨伴冰雹',
 };
 
+// 台灣主要城市內建座標（Open-Meteo 免費地理編碼對台灣地名不可靠：
+// 「新竹」會命中屏東、「高雄」命中中國、「台北」查無 —— 實測見 docs/loop/vi-weather/PRD.md）
+const TW_PLACES = {
+  '基隆': { lat: 25.128, lon: 121.742, en: 'keelung' },
+  '台北': { lat: 25.038, lon: 121.563, en: 'taipei' },
+  '新北': { lat: 25.012, lon: 121.466, en: 'new taipei' },
+  '板橋': { lat: 25.012, lon: 121.466, en: 'banqiao' },
+  '桃園': { lat: 24.994, lon: 121.301, en: 'taoyuan' },
+  '中壢': { lat: 24.954, lon: 121.226, en: 'zhongli' },
+  '新竹': { lat: 24.804, lon: 120.971, en: 'hsinchu' },
+  '竹北': { lat: 24.839, lon: 121.004, en: 'zhubei' },
+  '苗栗': { lat: 24.560, lon: 120.821, en: 'miaoli' },
+  '台中': { lat: 24.148, lon: 120.674, en: 'taichung' },
+  '彰化': { lat: 24.081, lon: 120.538, en: 'changhua' },
+  '南投': { lat: 23.910, lon: 120.684, en: 'nantou' },
+  '斗六': { lat: 23.712, lon: 120.543, en: 'douliu' },
+  '嘉義': { lat: 23.480, lon: 120.449, en: 'chiayi' },
+  '台南': { lat: 22.999, lon: 120.227, en: 'tainan' },
+  '高雄': { lat: 22.627, lon: 120.302, en: 'kaohsiung' },
+  '屏東': { lat: 22.683, lon: 120.489, en: 'pingtung' },
+  '宜蘭': { lat: 24.757, lon: 121.753, en: 'yilan' },
+  '花蓮': { lat: 23.977, lon: 121.605, en: 'hualien' },
+  '台東': { lat: 22.756, lon: 121.144, en: 'taitung' },
+  '澎湖': { lat: 23.571, lon: 119.579, en: 'penghu' },
+  '金門': { lat: 24.437, lon: 118.318, en: 'kinmen' },
+};
+
+// 越南語別名（漢越音 → 中文名；沿用 traTrain 已匯出的 toAscii 摺疊規則）
+// 不 import traTrain（避免天氣依賴台鐵服務；表小、直接在本檔維護一份天氣用別名）
+const VN_PLACES = {
+  'co long': '基隆', 'dai bac': '台北', 'tan bac': '新北', 'ban kieu': '板橋',
+  'dao vien': '桃園', 'trung lich': '中壢', 'trung ly': '中壢', 'trung li': '中壢',
+  'tan truc': '新竹', 'truc bac': '竹北', 'mieu lat': '苗栗', 'dai trung': '台中',
+  'chuong hoa': '彰化', 'nam dau': '南投', 'dau luc': '斗六', 'gia nghia': '嘉義',
+  'dai nam': '台南', 'cao hung': '高雄', 'binh dong': '屏東', 'nghi lan': '宜蘭',
+  'hoa lien': '花蓮', 'dai dong': '台東', 'banh ho': '澎湖', 'kim mon': '金門',
+};
+
+// 去除越南語聲調並小寫（Đ/đ → d）；同 traTrain 實作，複製一份、不跨模組 import 私有函式
+function toAscii(s) {
+  return String(s).toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// 標準 Levenshtein 編輯距離（DP）；同 traTrain 實作，複製一份
+function lev(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+// VN_PLACES 去空白版索引（模組載入時建立一次），供容忍「tantruc」等無空白拼法
+const VN_PLACES_NOSPACE = {};
+for (const k of Object.keys(VN_PLACES)) VN_PLACES_NOSPACE[k.replace(/\s+/g, '')] = VN_PLACES[k];
+
+// 統一地名解析：內建表（中／英／越南語）優先，查不到才走既有 geocode 鏈。
+// 命中回傳形狀與 geocode result 相容：{ name, latitude, longitude, country }。
+async function resolvePlace(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return null;
+
+  // 1. zh 直查：去尾市/縣、臺→台
+  const zh = raw.replace(/臺/g, '台');
+  const zhStripped = zh.replace(/(市|縣)$/, '');
+  if (TW_PLACES[zhStripped]) {
+    const p = TW_PLACES[zhStripped];
+    return { name: zhStripped, latitude: p.lat, longitude: p.lon, country: '台灣' };
+  }
+
+  // 2. vi 別名：直查 → 去空白 → 模糊容錯（lev ≤2，key 長度 ≥4）
+  const asciiFull = toAscii(zh.replace(/(市|縣)$/, ''));
+  if (VN_PLACES[asciiFull]) {
+    const zhName = VN_PLACES[asciiFull];
+    const p = TW_PLACES[zhName];
+    return { name: zhName, latitude: p.lat, longitude: p.lon, country: '台灣' };
+  }
+  const asciiNoSpace = asciiFull.replace(/\s+/g, '');
+  if (VN_PLACES_NOSPACE[asciiNoSpace]) {
+    const zhName = VN_PLACES_NOSPACE[asciiNoSpace];
+    const p = TW_PLACES[zhName];
+    return { name: zhName, latitude: p.lat, longitude: p.lon, country: '台灣' };
+  }
+  if (asciiNoSpace) {
+    let bestDist = Infinity;
+    let bestZh = null;
+    for (const key of Object.keys(VN_PLACES)) {
+      const keyNoSpace = key.replace(/\s+/g, '');
+      if (keyNoSpace.length < 4) continue; // 防短字誤中
+      const d = lev(asciiNoSpace, keyNoSpace);
+      if (d < bestDist) {
+        bestDist = d;
+        bestZh = VN_PLACES[key];
+      }
+    }
+    if (bestZh && bestDist <= 2) {
+      const p = TW_PLACES[bestZh];
+      return { name: bestZh, latitude: p.lat, longitude: p.lon, country: '台灣' };
+    }
+  }
+
+  // 3. en：完全相等，大小寫不敏感
+  const asciiLower = asciiFull.toLowerCase();
+  for (const [zhName, p] of Object.entries(TW_PLACES)) {
+    if (p.en === asciiLower) {
+      return { name: zhName, latitude: p.lat, longitude: p.lon, country: '台灣' };
+    }
+  }
+
+  // 太短的「純 ASCII 拉丁」字串（多半是聊天字詞，如 anh/xin）不丟給地理編碼，
+  // 避免命中無關的世界地名（tester 抓到 anh→衣索比亞）。帶聲調的真實短地名
+  //（如越南的 Huế）含非 ASCII 字元，不受此規則影響。
+  if (/^[a-zA-Z]{1,3}$/.test(raw)) return null;
+
+  // 4. fallback：沿用既有 geocode 鏈（行為不變）
+  let place = await geocode(raw);
+  if (!place && /^[一-龥]+$/.test(raw) && !/[市縣區鄉鎮]$/.test(raw)) {
+    place = (await geocode(raw + '市')) || (await geocode(raw + '縣'));
+  }
+  return place || null;
+}
+
 // 帶 5 秒逾時的 JSON 抓取；逾時／連線失敗／非 200 一律回 null（比照其他服務）
 async function fetchJson(url) {
   const ctrl = new AbortController();
@@ -54,13 +189,8 @@ async function geocode(name) {
 async function getWeather(city) {
   if (!city) return '請告訴我地名，例如：天氣 台北市';
 
-  // 1. 地理編碼：地名 → 經緯度
-  //    免費的 Open-Meteo 地理編碼對部分中文地名比較挑，
-  //    所以對中文輸入額外嘗試補上「市 / 縣」再查一次。
-  let place = await geocode(city);
-  if (!place && /^[一-龥]+$/.test(city) && !/[市縣區鄉鎮]$/.test(city)) {
-    place = (await geocode(city + '市')) || (await geocode(city + '縣'));
-  }
+  // 1. 地名解析：內建台灣城市表（中／英／越南語）優先，查不到才走 geocode 鏈
+  const place = await resolvePlace(city);
 
   if (!place) {
     return (
@@ -102,10 +232,7 @@ const WMO_EN = {
 // 給 AI 工具呼叫用：回傳「現在 + 未來三天」的純文字摘要（英文標籤、含降雨機率），
 // 讓模型自己用使用者的語言改寫。查不到回 null。
 async function getForecastSummary(city) {
-  let place = await geocode(city);
-  if (!place && /^[一-龥]+$/.test(city) && !/[市縣區鄉鎮]$/.test(city)) {
-    place = (await geocode(city + '市')) || (await geocode(city + '縣'));
-  }
+  const place = await resolvePlace(city);
   if (!place) return null;
 
   const url =
@@ -133,4 +260,4 @@ async function getForecastSummary(city) {
   );
 }
 
-module.exports = { getWeather, getForecastSummary };
+module.exports = { getWeather, getForecastSummary, resolvePlace };
