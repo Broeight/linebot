@@ -4,7 +4,7 @@ const conversation = require('./conversation');
 const ai = require('./ai');
 const lang = require('./lang');
 const tools = require('./tools');
-const { getContentBuffer } = require('./line');
+const { getContentBuffer, client } = require('./line');
 const { getWeather } = require('./services/weather');
 const { translate } = require('./services/translate');
 const food = require('./services/food');
@@ -84,8 +84,14 @@ async function handleText(userId, text) {
   // 追蹤這位使用者慣用的語言（用於照片描述、語音前綴等）
   lang.noteText(userId, trimmed);
 
-  // Rich menu 語言連動：fire-and-forget，不 await、不加回覆延遲，錯誤全吞
-  lang.resolve(userId).then((code) => richMenu.ensureFor(userId, code)).catch(() => {});
+  // Rich menu 語言連動 + 越南語首次歡迎：fire-and-forget，不 await、不加回覆延遲，錯誤全吞
+  lang.resolve(userId).then((code) => {
+    richMenu.ensureFor(userId, code);
+    if (code === 'vi' && lang.needsWelcome(userId)) {
+      lang.markWelcomed(userId); // 先標記防重，再推送
+      client.pushMessage({ to: userId, messages: [{ type: 'text', text: lang.welcomeVi() }] }).catch(() => {});
+    }
+  }).catch(() => {});
 
   // ── 台鐵選站 pending 攔截（在所有指令路由之前）──────────────────
   // 使用者點按鈕 / 打站名 / 回數字，命中就直接完成查詢並清 pending。
@@ -284,8 +290,10 @@ async function handleText(userId, text) {
 
   // ── 每日早安推播 ─────────────────────────────────────
   const morningOn = trimmed.match(/^開啟早安\s*(.*)$/);
-  if (morningOn) return morning.subscribe(userId, morningOn[1]);
-  if (trimmed === '關閉早安') return morning.unsubscribe(userId);
+  if (morningOn) return morning.subscribe(userId, morningOn[1], await lang.resolve(userId));
+  if (trimmed === '關閉早安') return morning.unsubscribe(userId, await lang.resolve(userId));
+  if (/^bat (?:ban )?tin sang$/.test(asciiTrimmed)) return morning.subscribe(userId, '', await lang.resolve(userId));
+  if (/^tat (?:ban )?tin sang$/.test(asciiTrimmed)) return morning.unsubscribe(userId, await lang.resolve(userId));
 
   // ── 健康記錄 ─────────────────────────────────────────
   if (trimmed === '血壓記錄') return health.history(userId, 'bp');

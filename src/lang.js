@@ -249,6 +249,43 @@ const WEATHER_ASK = {
   en: "🌤 Which city's weather? Type \"weather + city\", e.g. \"weather Taipei\".",
 };
 
+// 早安推播問候語（隨機取一句；zh-TW 逐字沿用現況）
+const MORNING_GREETINGS = {
+  'zh-TW': ['早安！新的一天加油 💪', '早安～祝你有美好的一天 ☀️', '早安！記得吃早餐喔 🍳'],
+  vi: ['Chào buổi sáng! Chúc bạn một ngày mới tốt lành 💪', 'Chào buổi sáng ~ chúc bạn một ngày tuyệt vời ☀️', 'Chào buổi sáng! Nhớ ăn sáng nhé 🍳'],
+  en: ['Good morning! Have a great day 💪', 'Good morning ~ wishing you a wonderful day ☀️', 'Good morning! Don\'t forget breakfast 🍳'],
+};
+// 早安推播生日行（{names} 由呼叫端代入，已用該語言的連接詞串好）
+const BIRTHDAY_LINE = {
+  'zh-TW': '🎂 今天是 {names} 的生日，別忘了祝賀！',
+  vi: '🎂 Hôm nay là sinh nhật của {names}, đừng quên chúc mừng nhé!',
+  en: "🎂 Today is {names}'s birthday — don't forget to celebrate!",
+};
+// 早安推播開啟確認
+const MORNING_ON = {
+  'zh-TW': '☀️ 已開啟每日早安推播（每天 {time}），天氣以「{city}」為準。\n關閉請輸入「關閉早安」。',
+  vi: '☀️ Đã bật bản tin buổi sáng hằng ngày (lúc {time}), thời tiết theo khu vực "{city}".\nĐể tắt, gõ "tắt tin sáng".',
+  en: '☀️ Daily morning digest is ON (at {time}), weather for "{city}".\nTo turn off, type "關閉早安" or "tắt tin sáng".',
+};
+// 早安推播關閉確認
+const MORNING_OFF = {
+  'zh-TW': '已關閉每日早安推播。',
+  vi: 'Đã tắt bản tin buổi sáng hằng ngày.',
+  en: 'Daily morning digest turned off.',
+};
+// 早安推播關閉（原本就沒開）
+const MORNING_OFF_NONE = {
+  'zh-TW': '你目前沒有開啟早安推播。',
+  vi: 'Bạn chưa bật bản tin buổi sáng.',
+  en: "You don't have the morning digest turned on.",
+};
+// 越南語使用者首次歡迎訊息
+const WELCOME_VI =
+  'Chào bạn! 👋 Mình là trợ lý gia đình.\n' +
+  'Bạn có thể nói chuyện với mình bằng tiếng Việt — nhắn chữ hoặc gửi tin nhắn thoại đều được.\n' +
+  'Gõ "trợ giúp" để xem tất cả chức năng (giờ tàu, trạm xăng, tỷ giá, thời tiết...).\n' +
+  'Bạn cũng có thể bấm menu ở cuối màn hình 👇';
+
 // 手動切換語言時的確認訊息（用該語言回）
 const CONFIRM = {
   'zh-TW': '✅ 已將你的語言設為繁體中文。',
@@ -263,8 +300,10 @@ function record(userId) {
   return store.load(FILE).find((r) => r.userId === userId);
 }
 function write(userId, lang, locked) {
-  const list = store.load(FILE).filter((r) => r.userId !== userId);
-  list.push({ userId, lang, locked: !!locked });
+  const all = store.load(FILE);
+  const prev = all.find((r) => r.userId === userId);
+  const list = all.filter((r) => r.userId !== userId);
+  list.push({ userId, lang, locked: !!locked, ...(prev && prev.welcomed ? { welcomed: true } : {}) });
   store.save(FILE, list);
 }
 
@@ -438,6 +477,54 @@ function weatherAsk(code) {
   return WEATHER_ASK['zh-TW'];
 }
 
+// 早安推播問候語（隨機取一句）；ja/th/id 回落 en，未知碼回落 zh-TW
+function morningGreeting(code) {
+  const list = MORNING_GREETINGS[code] || (code === 'ja' || code === 'th' || code === 'id' ? MORNING_GREETINGS.en : MORNING_GREETINGS['zh-TW']);
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+// 早安推播生日行（模板代入 {names}）；ja/th/id 回落 en，未知碼回落 zh-TW
+function birthdayLine(code, namesJoined) {
+  const tmpl = BIRTHDAY_LINE[code] || (code === 'ja' || code === 'th' || code === 'id' ? BIRTHDAY_LINE.en : BIRTHDAY_LINE['zh-TW']);
+  return tmpl.replace('{names}', namesJoined);
+}
+
+// 早安推播開啟確認（模板代入 {time}/{city}）；ja/th/id 回落 en，未知碼回落 zh-TW
+function morningOn(code, time, city) {
+  const tmpl = MORNING_ON[code] || (code === 'ja' || code === 'th' || code === 'id' ? MORNING_ON.en : MORNING_ON['zh-TW']);
+  return tmpl.replace('{time}', time).replace('{city}', city);
+}
+
+// 早安推播關閉確認；ja/th/id 回落 en，未知碼回落 zh-TW
+function morningOff(code) {
+  return MORNING_OFF[code] || (code === 'ja' || code === 'th' || code === 'id' ? MORNING_OFF.en : MORNING_OFF['zh-TW']);
+}
+
+// 早安推播關閉（原本就沒開）；ja/th/id 回落 en，未知碼回落 zh-TW
+function morningOffNone(code) {
+  return MORNING_OFF_NONE[code] || (code === 'ja' || code === 'th' || code === 'id' ? MORNING_OFF_NONE.en : MORNING_OFF_NONE['zh-TW']);
+}
+
+// 越南語使用者首次歡迎訊息
+function welcomeVi() {
+  return WELCOME_VI;
+}
+
+// 該使用者是否需要收到 vi 首次歡迎：目前語言為 vi 且尚未標記 welcomed
+function needsWelcome(userId) {
+  const r = record(userId);
+  return !!r && r.lang === 'vi' && !r.welcomed;
+}
+
+// 標記該使用者已收到 vi 首次歡迎（存進 lang.json 記錄，避免重複推播）
+function markWelcomed(userId) {
+  const list = store.load(FILE).filter((r) => r.userId !== userId);
+  const prev = store.load(FILE).find((r) => r.userId === userId);
+  if (!prev) return; // 沒有語言記錄就不用標記（needsWelcome 本來就會回 false）
+  list.push({ ...prev, welcomed: true });
+  store.save(FILE, list);
+}
+
 module.exports = {
   noteText,
   resolve,
@@ -462,4 +549,12 @@ module.exports = {
   helpMenu,
   traUsage,
   weatherAsk,
+  morningGreeting,
+  birthdayLine,
+  morningOn,
+  morningOff,
+  morningOffNone,
+  welcomeVi,
+  needsWelcome,
+  markWelcomed,
 };
