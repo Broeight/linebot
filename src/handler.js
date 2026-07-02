@@ -18,6 +18,7 @@ const exchangeRate = require('./services/exchangeRate');
 const holiday = require('./services/holiday');
 const fuelPrice = require('./services/fuelPrice');
 const traTrain = require('./services/traTrain');
+const { toAscii } = traTrain;
 const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
 const store = require('./store');
@@ -52,33 +53,6 @@ function locationQuickReply(code) {
       },
     ],
   };
-}
-
-function helpText() {
-  return (
-    '👋 你好！我可以幫你：\n\n' +
-    '💬 直接聊天、問問題\n' +
-    '🎙 傳語音 → 我幫你聽打、回答\n' +
-    '📷 傳照片 → 辨識／讀字／翻譯\n' +
-    '🌤 天氣：「天氣 台北市」\n' +
-    '⏰ 提醒：「提醒我 明天9點 回診」「提醒 每天8點 吃藥」\n' +
-    '　　　 看提醒：「提醒清單」｜刪除：「清除提醒」\n' +
-    '☀️ 早安推播：「開啟早安 台北市」｜關閉：「關閉早安」\n' +
-    '🎂 生日：「生日 媽媽 8/15」｜清單：「生日清單」\n' +
-    '🩺 健康：「血壓 120 80」「血糖 95」｜查看：「血壓記錄」\n' +
-    '💧 喝水提醒：「開啟喝水提醒」\n' +
-    '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
-    '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
-    '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
-    '⛽ 油價：「油價」「95油價」「柴油油價」\n' +
-    '⛽ 加油站：「加油站」→ 分享位置找最近的\n' +
-    '🚆 台鐵：「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
-    '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
-    '🧾 發票對獎：「對獎 12345678」\n' +
-    '🍳 吃什麼：「今天吃什麼」｜食譜：「食譜 番茄炒蛋」\n' +
-    '🌍 切換語言：「語言 越南語」（每人可各自設定）\n' +
-    '🔄 清除對話：「/reset」'
-  );
 }
 
 /**
@@ -121,7 +95,8 @@ async function handleText(userId, text) {
       const toId = ambiguousRole === 'to' ? chosen.id : known.id;
       const toName = ambiguousRole === 'to' ? chosen.name : known.name;
       traChoice.clear(userId);
-      return traTrain.getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day });
+      const code = await lang.resolve(userId);
+      return traTrain.getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day, code });
     }
   }
 
@@ -130,8 +105,8 @@ async function handleText(userId, text) {
     conversation.reset(userId);
     return '🔄 已清除對話紀錄，我們重新開始吧！';
   }
-  if (trimmed === '/help' || trimmed === '說明' || trimmed === 'help' || trimmed === '選單') {
-    return helpText();
+  if (/^(?:\/help|說明|help|選單|menu|trợ giúp|giúp đỡ|hướng dẫn)$/i.test(trimmed)) {
+    return lang.helpMenu(await lang.resolve(userId));
   }
 
   // ── 個人語言設定 ─────────────────────────────────────
@@ -255,6 +230,24 @@ async function handleText(userId, text) {
     return { text: lang.shareLocationPrompt(code), quickReply: locationQuickReply(code) };
   }
 
+  // ── 越南語關鍵字直達（比對用去聲調小寫，參數用原文；toAscii 不改變字元數/位置）──
+  // 注意：trimmed 本身已 trim 過頭尾，這裡不再對 asciiTrimmed 額外 trim，
+  // 避免比對用字串與 trimmed 的索引位置錯開。
+  const asciiTrimmed = toAscii(trimmed);
+  if (/^gia (?:xang|dau)$/.test(asciiTrimmed)) {
+    return fuelPrice.lookup();
+  }
+  if (/^ty gia$/.test(asciiTrimmed)) {
+    return exchangeRate.lookup('TWD VND');
+  }
+  const tyGiaRestMatch = asciiTrimmed.match(/^ty gia\s+(.+)$/);
+  if (tyGiaRestMatch) {
+    // 用比對結果的位置從「原文」切出參數（toAscii 只轉小寫/去聲調，不改字元數/位置）
+    const startIdx = tyGiaRestMatch.index + tyGiaRestMatch[0].length - tyGiaRestMatch[1].length;
+    const restOriginal = trimmed.slice(startIdx).trim();
+    return exchangeRate.lookup(restOriginal);
+  }
+
   // ── 發票對獎 ─────────────────────────────────────────
   const invoiceMatch = trimmed.match(/^(?:對獎|發票)\s*(.*)$/);
   if (invoiceMatch) {
@@ -307,10 +300,12 @@ async function handleText(userId, text) {
 
   // ── 預設：AI 對話（可用工具：自然語句設提醒、記帳、查發票、查天氣）──
   const history = conversation.append(userId, 'user', trimmed);
+  const fallbackCode = await lang.resolve(userId);
   const reply = await ai.chat(history, {
     tools: tools.defs,
     runTool: (name, args) => tools.run(userId, name, args),
     systemExtra: tools.timeContext(),
+    fallbackText: lang.chatFallback(fallbackCode),
   });
   conversation.append(userId, 'assistant', reply);
 
@@ -342,11 +337,11 @@ async function handleAudio(userId, messageId) {
     buf = await getContentBuffer(messageId);
   } catch (e) {
     console.error('抓語音失敗：', e.message);
-    return '抱歉，我拿不到這段語音 🙏';
+    return lang.audioFetchFail(await lang.resolve(userId));
   }
   const text = await ai.transcribe(buf);
   if (!text || text.replace(/[\s.。,，、]/g, '').length === 0) {
-    return '我聽不太清楚，可以再說一次、或直接打字給我嗎？';
+    return lang.audioUnclear(await lang.resolve(userId));
   }
   // handleText 會順便依這段話更新使用者語言，所以先處理再取語言
   const answer = await handleText(userId, text); // 可能是 string 或 {text, quickReply}
@@ -366,11 +361,11 @@ async function handleImage(userId, messageId) {
     buf = await getContentBuffer(messageId);
   } catch (e) {
     console.error('抓圖片失敗：', e.message);
-    return '抱歉，我拿不到這張圖片 🙏';
+    return lang.imageFetchFail(await lang.resolve(userId));
   }
   const code = await lang.resolve(userId);
   const desc = await ai.vision(buf, 'image/jpeg', lang.visionPrompt(code));
-  if (!desc) return '我看不太懂這張圖，換一張清楚一點的試試？';
+  if (!desc) return lang.imageUnclear(code);
   // 把圖片描述存進對話記憶，讓使用者能接著針對這張圖追問（例如「這藥的作用？」）
   conversation.append(userId, 'user', '（我傳了一張圖片給你看）');
   conversation.append(userId, 'assistant', desc);

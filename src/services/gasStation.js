@@ -167,7 +167,7 @@ function formatList(list) {
   return list
     .map((s, i) => {
       const distText =
-        s.km < 1 ? `${Math.round(s.km * 1000)} 公尺` : `${s.km.toFixed(1)} 公里`;
+        s.km < 1 ? `${Math.round(s.km * 1000)} m` : `${s.km.toFixed(1)} km`;
       const mapUrl = `https://www.google.com/maps?q=${s.lat.toFixed(6)},${s.lon.toFixed(6)}`;
       return (
         `${i + 1}. ${s.name}（${distText}）\n` +
