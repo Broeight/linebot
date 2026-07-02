@@ -21,6 +21,7 @@ const traTrain = require('./services/traTrain');
 const { toAscii } = traTrain;
 const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
+const richMenu = require('./services/richMenu');
 const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
@@ -83,6 +84,9 @@ async function handleText(userId, text) {
   // 追蹤這位使用者慣用的語言（用於照片描述、語音前綴等）
   lang.noteText(userId, trimmed);
 
+  // Rich menu 語言連動：fire-and-forget，不 await、不加回覆延遲，錯誤全吞
+  lang.resolve(userId).then((code) => richMenu.ensureFor(userId, code)).catch(() => {});
+
   // ── 台鐵選站 pending 攔截（在所有指令路由之前）──────────────────
   // 使用者點按鈕 / 打站名 / 回數字，命中就直接完成查詢並清 pending。
   const chosen = traChoice.matchCandidate(userId, trimmed);
@@ -116,6 +120,7 @@ async function handleText(userId, text) {
     const code = lang.nameToCode(arg);
     if (!code) return lang.optionsText();
     lang.setManual(userId, code);
+    richMenu.ensureFor(userId, code).catch(() => {});
     return lang.confirmText(code);
   }
 
@@ -217,8 +222,13 @@ async function handleText(userId, text) {
     return traTrain.lookup(traMatch[1].trim());
   }
 
+  // ── 越南語關鍵字直達（比對用去聲調小寫，參數用原文；toAscii 不改變字元數/位置）──
+  // 注意：trimmed 本身已 trim 過頭尾，這裡不再對 asciiTrimmed 額外 trim，
+  // 避免比對用字串與 trimmed 的索引位置錯開。
+  const asciiTrimmed = toAscii(trimmed);
+
   // ── 加油站（找最近的）───────────────────────────────────
-  if (/^(?:最近的?加油站|附近的?加油站|加油站|哪裡加油|找加油站)$/.test(trimmed)) {
+  if (/^(?:最近的?加油站|附近的?加油站|加油站|哪裡加油|找加油站)$/.test(trimmed) || /^tram xang$/.test(asciiTrimmed)) {
     const code = await lang.resolve(userId);
     const loc = gasStation.getLocation(userId);
     if (loc) {
@@ -230,10 +240,6 @@ async function handleText(userId, text) {
     return { text: lang.shareLocationPrompt(code), quickReply: locationQuickReply(code) };
   }
 
-  // ── 越南語關鍵字直達（比對用去聲調小寫，參數用原文；toAscii 不改變字元數/位置）──
-  // 注意：trimmed 本身已 trim 過頭尾，這裡不再對 asciiTrimmed 額外 trim，
-  // 避免比對用字串與 trimmed 的索引位置錯開。
-  const asciiTrimmed = toAscii(trimmed);
   if (/^gia (?:xang|dau)$/.test(asciiTrimmed)) {
     return fuelPrice.lookup();
   }
@@ -246,6 +252,12 @@ async function handleText(userId, text) {
     const startIdx = tyGiaRestMatch.index + tyGiaRestMatch[0].length - tyGiaRestMatch[1].length;
     const restOriginal = trimmed.slice(startIdx).trim();
     return exchangeRate.lookup(restOriginal);
+  }
+  if (/^tau hoa$/.test(asciiTrimmed)) {
+    return lang.traUsage(await lang.resolve(userId));
+  }
+  if (/^thoi tiet$/.test(asciiTrimmed)) {
+    return lang.weatherAsk(await lang.resolve(userId));
   }
 
   // ── 發票對獎 ─────────────────────────────────────────

@@ -219,6 +219,36 @@ const HELP_MENU = {
     '🔄 Clear conversation: 「/reset」',
 };
 
+// 台鐵怎麼問（vi 選單「tàu hoả」鍵用；zh 使用者走 traTrain.usage() 不經此表）
+const TRA_USAGE = {
+  'zh-TW':
+    '🚆 台鐵時刻查詢可以這樣問：\n' +
+    '・台鐵 台北 台中（近期班次，最多 5 筆）\n' +
+    '・下一班 台北到花蓮（只看最近一班）\n' +
+    '支援主要幹線車站；僅查今天、當下時間之後的班次。',
+  vi:
+    '🚆 Tra giờ tàu Đài Loan — bạn có thể hỏi bằng tiếng Việt, ví dụ:\n' +
+    '・「tàu từ Tân Trúc đến Trung Lịch」(các chuyến sắp tới hôm nay)\n' +
+    '・「tàu từ Tân Trúc đến Trung Lịch ngày mai」\n' +
+    '・「chuyến tàu tiếp theo từ Đài Bắc đến Hoa Liên」(chỉ chuyến gần nhất)\n' +
+    'Nhắn chữ hoặc gửi tin nhắn thoại đều được nhé! 🎙\n' +
+    'Cũng có thể dùng lệnh tiếng Trung: 「台鐵 台北 台中」「下一班 台北到花蓮」.',
+  en:
+    '🚆 Taiwan Railway timetable — ask like:\n' +
+    '・"train from Hsinchu to Zhongli" (upcoming trains today)\n' +
+    '・"next train from Taipei to Hualien"\n' +
+    'Text or voice both work. Chinese commands also work: 「台鐵 台北 台中」「下一班 台北到花蓮」.',
+};
+
+// 「想查哪裡的天氣」引導（vi 選單「thời tiết」鍵用）
+const WEATHER_ASK = {
+  'zh-TW': '🌤 想查哪裡的天氣呢？請輸入「天氣 城市名」，例如：天氣 台北市',
+  vi:
+    '🌤 Bạn muốn xem thời tiết ở đâu? Hãy nhắn 「thời tiết + tên thành phố」,\n' +
+    'ví dụ: 「thời tiết Đài Bắc」. Nhắn chữ hoặc nói bằng tin nhắn thoại đều được!',
+  en: "🌤 Which city's weather? Type \"weather + city\", e.g. \"weather Taipei\".",
+};
+
 // 手動切換語言時的確認訊息（用該語言回）
 const CONFIRM = {
   'zh-TW': '✅ 已將你的語言設為繁體中文。',
@@ -394,6 +424,20 @@ function helpMenu(code) {
   return HELP_MENU['zh-TW'];
 }
 
+// 台鐵怎麼問（vi 選單「tàu hoả」鍵用）；ja/th/id 回落 en，未知碼回落 zh-TW
+function traUsage(code) {
+  if (TRA_USAGE[code]) return TRA_USAGE[code];
+  if (code === 'ja' || code === 'th' || code === 'id') return TRA_USAGE.en;
+  return TRA_USAGE['zh-TW'];
+}
+
+// 「想查哪裡的天氣」引導（vi 選單「thời tiết」鍵用）；ja/th/id 回落 en，未知碼回落 zh-TW
+function weatherAsk(code) {
+  if (WEATHER_ASK[code]) return WEATHER_ASK[code];
+  if (code === 'ja' || code === 'th' || code === 'id') return WEATHER_ASK.en;
+  return WEATHER_ASK['zh-TW'];
+}
+
 module.exports = {
   noteText,
   resolve,
@@ -416,4 +460,6 @@ module.exports = {
   imageFetchFail,
   imageUnclear,
   helpMenu,
+  traUsage,
+  weatherAsk,
 };

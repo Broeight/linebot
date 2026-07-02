@@ -8,6 +8,7 @@ const handler = require('./handler');
 const lang = require('./lang');
 const reminder = require('./services/reminder');
 const morning = require('./services/morning');
+const richMenu = require('./services/richMenu');
 
 const app = express();
 
@@ -82,4 +83,5 @@ app.listen(config.port, () => {
   console.log(`   Webhook 路徑： POST /webhook`);
   reminder.start(); // 啟動提醒排程
   morning.start(); // 啟動每日早安推播排程
+  richMenu.ensureSetup().catch((e) => console.error('richmenu setup 失敗：', e));
 });
