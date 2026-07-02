@@ -24,7 +24,7 @@ const defs = [
       parameters: {
         type: 'object',
         properties: {
-          location: { type: 'string', description: '地點名稱，用中文或英文（例如「新竹市」或「Hsinchu」）。' },
+          location: { type: 'string', description: '地點名稱，直接傳使用者原話裡的地名（中文、英文或越南語皆可，例如「新竹市」、「Hsinchu」、越南語直接傳 "Tân Trúc"）。絕對不要自行音譯或翻譯地名，系統會自動解析。' },
         },
         required: ['location'],
       },
