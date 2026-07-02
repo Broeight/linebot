@@ -637,9 +637,10 @@ async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day,
         : `🚆 下一班 ${fromName} → ${toName}\n${noTrainsText(lc, isTomorrow)}`;
     }
     const t = trains[0];
+    const typeName0 = lc === 'zh-TW' ? t.typeZh : (t.typeEn || t.typeZh);
     return (
       `🚆 下一班 ${fromName} → ${toName}（${mmdd}）\n` +
-      `・${t.trainNo}次 ${t.typeZh}　${t.departure} 發車，${t.arrival} 抵達（${durationLocalized(lc, t.departure, t.arrival)}）\n\n` +
+      `・${t.trainNo}次 ${typeName0}　${t.departure} 發車，${t.arrival} 抵達（${durationLocalized(lc, t.departure, t.arrival)}）\n\n` +
       `資料來源：${SOURCE}`
     );
   }
@@ -650,9 +651,10 @@ async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day,
       : `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n${noTrainsText(lc, isTomorrow)}`;
   }
 
-  const lines = trains.map(
-    (t) => `・${t.trainNo}次 ${t.typeZh}　${t.departure}→${t.arrival}（${durationLocalized(lc, t.departure, t.arrival)}）`
-  );
+  const lines = trains.map((t) => {
+    const typeName = lc === 'zh-TW' ? t.typeZh : (t.typeEn || t.typeZh);
+    return `・${t.trainNo}次 ${typeName}　${t.departure}→${t.arrival}（${durationLocalized(lc, t.departure, t.arrival)}）`;
+  });
 
   const whenText = lc === 'zh-TW' ? whenZh : whenLabel(lc, isTomorrow);
 

@@ -3,43 +3,77 @@
 //   開啟早安            （天氣預設台北市）
 //   開啟早安 高雄市      （指定城市）
 //   關閉早安
+//   bật tin sáng / tắt tin sáng（越南語直達，天氣預設台北市）
 const store = require('../store');
 const { client } = require('../line');
 const { getWeather } = require('./weather');
 const birthday = require('./birthday');
 const { config } = require('../config');
+const lang = require('../lang');
+const ai = require('../ai');
 
 const FILE = 'morning.json';
 
-function subscribe(userId, city) {
+// 天氣段翻譯用的語言名對照（給 ai.ask 的 prompt 用）
+const WEATHER_LANG_NAME = {
+  vi: '越南語',
+  en: '英文',
+  ja: '日文',
+  th: '泰文',
+  id: '印尼文',
+};
+
+function subscribe(userId, city, code = 'zh-TW') {
   const c = (city || '').trim() || '台北市';
   const list = store.load(FILE).filter((s) => s.userId !== userId);
   list.push({ userId, city: c });
   store.save(FILE, list);
-  return `☀️ 已開啟每日早安推播（每天 ${config.morningTime}），天氣以「${c}」為準。\n關閉請輸入「關閉早安」。`;
+  return lang.morningOn(code, config.morningTime, c);
 }
 
-function unsubscribe(userId) {
+function unsubscribe(userId, code = 'zh-TW') {
   const before = store.load(FILE);
   const after = before.filter((s) => s.userId !== userId);
   store.save(FILE, after);
-  return before.length === after.length ? '你目前沒有開啟早安推播。' : '已關閉每日早安推播。';
-}
-
-function greeting() {
-  const hellos = ['早安！新的一天加油 💪', '早安～祝你有美好的一天 ☀️', '早安！記得吃早餐喔 🍳'];
-  return hellos[Math.floor(Math.random() * hellos.length)];
+  return before.length === after.length ? lang.morningOffNone(code) : lang.morningOff(code);
 }
 
 async function buildMessage(sub) {
-  const parts = [greeting()];
+  let code = 'zh-TW';
   try {
-    parts.push(await getWeather(sub.city));
+    code = (await lang.resolve(sub.userId)) || 'zh-TW';
+  } catch {
+    code = 'zh-TW';
+  }
+
+  const parts = [lang.morningGreeting(code)];
+
+  let weatherText = '';
+  try {
+    weatherText = await getWeather(sub.city);
   } catch {
     /* 天氣失敗就略過 */
   }
+  if (weatherText) {
+    if (code === 'zh-TW') {
+      parts.push(weatherText);
+    } else {
+      const langName = WEATHER_LANG_NAME[code] || '英文';
+      let translated = '';
+      try {
+        translated = await ai.ask(`把以下訊息完整翻譯成${langName}，保留 emoji 與數字，只輸出翻譯結果`, weatherText);
+      } catch {
+        translated = '';
+      }
+      parts.push(translated || weatherText);
+    }
+  }
+
   const bdays = birthday.todays(sub.userId);
-  if (bdays.length) parts.push(`🎂 今天是 ${bdays.join('、')} 的生日，別忘了祝賀！`);
+  if (bdays.length) {
+    const namesJoined = bdays.join(code === 'zh-TW' ? '、' : ', ');
+    parts.push(lang.birthdayLine(code, namesJoined));
+  }
   return parts.join('\n\n');
 }
 
