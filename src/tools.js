@@ -12,6 +12,7 @@ const { getHolidaySummary } = require('./services/holiday');
 const { getFuelPriceSummary } = require('./services/fuelPrice');
 const { getTraTrainSummary, normalizeStation, suggestStations, getTraTrainByIds } = require('./services/traTrain');
 const traChoice = require('./services/traChoice');
+const gasStation = require('./services/gasStation');
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -179,6 +180,17 @@ const defs = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'find_gas_station',
+      description:
+        '尋找離使用者「目前位置」最近的加油站（台灣）。當使用者用任何語言（尤其越南語）' +
+        '詢問加油站、最近的加油站、哪裡可以加油（gas station / trạm xăng / ガソリンスタンド / ปั๊มน้ำมัน / SPBU）時呼叫。' +
+        '不需要參數；系統會使用使用者最近分享的位置，或自動引導使用者分享位置。',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -190,7 +202,8 @@ function timeContext() {
     '若使用者用任何語言詢問台灣油價、汽油、柴油，就呼叫 get_fuel_price 工具。' +
     '若使用者用任何語言（含越南語）詢問台鐵/火車從某站到某站的班次、下一班車，' +
       '就呼叫 get_tra_train 工具，站名直接傳使用者原本說的原文（中／英／越南語都可，' +
-      '例如越南語直接傳 Tân Trúc、Trung Lịch），不要自己音譯成漢字。'
+      '例如越南語直接傳 Tân Trúc、Trung Lịch），不要自己音譯成漢字。' +
+    '若使用者用任何語言（含越南語）詢問加油站、最近的加油站、哪裡加油，就呼叫 find_gas_station 工具，不要自己編加油站名稱或地址。'
   );
 }
 
@@ -286,6 +299,27 @@ async function run(userId, name, argsJson) {
         return (
           'Neither station could be recognized. Ask the user to clearly state both the departure ' +
           'and arrival Taiwan Railway station names (Chinese or English).'
+        );
+      }
+      case 'find_gas_station': {
+        const loc = gasStation.getLocation(userId);
+        if (loc) {
+          const list = await gasStation.findNearest(loc.lat, loc.lon);
+          if (list && list.length) {
+            gasStation.setPending(userId, { kind: 'result', list });
+            return (
+              'GAS_STATIONS_FOUND: The nearest gas stations were found using the location the user shared recently. ' +
+              'A formatted list (names, distances, addresses, map links) will be shown to the user directly. ' +
+              'Reply briefly that you found them; do NOT invent station names or links.'
+            );
+          }
+          return 'Cannot fetch gas station data right now. Tell the user to try again later.';
+        }
+        gasStation.setPending(userId, { kind: 'ask' });
+        return (
+          'NEEDS_LOCATION: Asked the user to share their current location. ' +
+          'A "share location" button will be shown automatically. ' +
+          'Reply briefly asking them to share their location; do NOT guess where they are.'
         );
       }
       default:

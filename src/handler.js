@@ -19,6 +19,7 @@ const holiday = require('./services/holiday');
 const fuelPrice = require('./services/fuelPrice');
 const traTrain = require('./services/traTrain');
 const traChoice = require('./services/traChoice');
+const gasStation = require('./services/gasStation');
 const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
@@ -34,6 +35,22 @@ function buildQuickReply(candidates) {
       type: 'action',
       action: { type: 'message', label: c.name.slice(0, 20), text: c.name },
     })),
+  };
+}
+
+/**
+ * 把「傳送位置」按鈕組成 LINE Quick Reply 物件（恰 1 顆，action.type = 'location'）。
+ * @param {string} code 語言代碼
+ * @returns {{items: Array}}
+ */
+function locationQuickReply(code) {
+  return {
+    items: [
+      {
+        type: 'action',
+        action: { type: 'location', label: lang.shareLocationLabel(code).slice(0, 20) },
+      },
+    ],
   };
 }
 
@@ -54,6 +71,7 @@ function helpText() {
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
     '⛽ 油價：「油價」「95油價」「柴油油價」\n' +
+    '⛽ 加油站：「加油站」→ 分享位置找最近的\n' +
     '🚆 台鐵：「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
     '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
     '🧾 發票對獎：「對獎 12345678」\n' +
@@ -61,6 +79,22 @@ function helpText() {
     '🌍 切換語言：「語言 越南語」（每人可各自設定）\n' +
     '🔄 清除對話：「/reset」'
   );
+}
+
+/**
+ * 處理一則位置訊息：用經緯度找最近加油站，回格式化文字。
+ * 不呼叫 conversation.append（隱私：位置與結果都不進對話記憶）。
+ * @param {string} userId
+ * @param {{latitude:number, longitude:number}} msg
+ * @returns {Promise<string>}
+ */
+async function handleLocation(userId, msg) {
+  const { latitude, longitude } = msg;
+  const code = await lang.resolve(userId);
+  gasStation.noteLocation(userId, latitude, longitude); // 只進記憶體（30 分 TTL）
+  const list = await gasStation.findNearest(latitude, longitude);
+  if (!list || list.length === 0) return lang.gasStationFail(code);
+  return lang.gasStationHeader(code) + '\n\n' + gasStation.formatList(list);
 }
 
 /**
@@ -208,6 +242,19 @@ async function handleText(userId, text) {
     return traTrain.lookup(traMatch[1].trim());
   }
 
+  // ── 加油站（找最近的）───────────────────────────────────
+  if (/^(?:最近的?加油站|附近的?加油站|加油站|哪裡加油|找加油站)$/.test(trimmed)) {
+    const code = await lang.resolve(userId);
+    const loc = gasStation.getLocation(userId);
+    if (loc) {
+      // 30 分鐘內分享過位置 → 直接查（F6）
+      const list = await gasStation.findNearest(loc.lat, loc.lon);
+      if (!list || list.length === 0) return lang.gasStationFail(code);
+      return lang.gasStationHeader(code) + '\n\n' + gasStation.formatList(list);
+    }
+    return { text: lang.shareLocationPrompt(code), quickReply: locationQuickReply(code) };
+  }
+
   // ── 發票對獎 ─────────────────────────────────────────
   const invoiceMatch = trimmed.match(/^(?:對獎|發票)\s*(.*)$/);
   if (invoiceMatch) {
@@ -274,6 +321,17 @@ async function handleText(userId, text) {
     return { text: lang.chooseStationPrompt(code), quickReply: buildQuickReply(p.candidates) };
   }
 
+  // 本回合剛因 find_gas_station 建立 pending → 覆寫模型文字（確定性輸出）
+  const gasPending = gasStation.consumePending(userId);
+  if (gasPending) {
+    const code = await lang.resolve(userId);
+    if (gasPending.kind === 'ask') {
+      return { text: lang.shareLocationPrompt(code), quickReply: locationQuickReply(code) };
+    }
+    // kind === 'result'：清單由 handler 直接組，URL 不經模型轉抄
+    return lang.gasStationHeader(code) + '\n\n' + gasStation.formatList(gasPending.list);
+  }
+
   return reply;
 }
 
@@ -331,7 +389,8 @@ async function replyForEvent(event) {
   if (msg.type === 'text') return handleText(userId, msg.text);
   if (msg.type === 'audio') return handleAudio(userId, msg.id);
   if (msg.type === 'image') return handleImage(userId, msg.id);
-  return null; // 貼圖、影片、位置等先略過
+  if (msg.type === 'location') return handleLocation(userId, msg);
+  return null; // 貼圖、影片等先略過
 }
 
-module.exports = { handleText, handleAudio, handleImage, replyForEvent };
+module.exports = { handleText, handleAudio, handleImage, handleLocation, replyForEvent };

@@ -45,6 +45,46 @@ const CHOOSE_STATION_PROMPT = {
   id: 'Stasiun mana yang Anda maksud? Silakan ketuk tombol di bawah, atau ketik nama stasiun.',
 };
 
+// 「請分享位置」提示句（加油站引導用）
+const SHARE_LOCATION_PROMPT = {
+  'zh-TW': '請分享你目前的位置，我幫你找最近的加油站。點下方按鈕，或用聊天室的「＋」→「位置資訊」。',
+  vi: 'Hãy chia sẻ vị trí hiện tại của bạn để mình tìm trạm xăng gần nhất. Bấm nút bên dưới, hoặc dùng「+」→「Vị trí」trong khung chat.',
+  en: 'Please share your current location so I can find the nearest gas station. Tap the button below, or use "+" → "Location" in the chat.',
+  ja: '現在地を共有してください。一番近いガソリンスタンドを探します。下のボタンを押すか、チャットの「＋」→「位置情報」から送れます。',
+  th: 'กรุณาแชร์ตำแหน่งปัจจุบันของคุณ ฉันจะหาปั๊มน้ำมันที่ใกล้ที่สุดให้ กดปุ่มด้านล่าง หรือใช้ "+" → "ตำแหน่ง" ในแชท',
+  id: 'Silakan bagikan lokasi Anda saat ini agar saya bisa mencari SPBU terdekat. Ketuk tombol di bawah, atau gunakan "+" → "Lokasi" di chat.',
+};
+
+// 「傳送位置」按鈕 label（≤20 字，LINE 硬限制）
+const SHARE_LOCATION_LABEL = {
+  'zh-TW': '📍 傳送位置',
+  vi: '📍 Gửi vị trí',
+  en: '📍 Send location',
+  ja: '📍 位置を送る',
+  th: '📍 ส่งตำแหน่ง',
+  id: '📍 Kirim lokasi',
+};
+
+// 加油站結果標題列
+const GAS_STATION_HEADER = {
+  'zh-TW': '⛽ 離你最近的加油站：',
+  vi: '⛽ Trạm xăng gần bạn nhất:',
+  en: '⛽ Nearest gas stations:',
+  ja: '⛽ 一番近いガソリンスタンド：',
+  th: '⛽ ปั๊มน้ำมันที่ใกล้ที่สุด:',
+  id: '⛽ SPBU terdekat:',
+};
+
+// 加油站資料取不到
+const GAS_STATION_FAIL = {
+  'zh-TW': '目前查不到加油站資料，請稍後再試 🙏',
+  vi: 'Hiện không tra được dữ liệu trạm xăng, vui lòng thử lại sau 🙏',
+  en: 'Cannot fetch gas station data right now, please try again later 🙏',
+  ja: '現在ガソリンスタンド情報を取得できません。しばらくしてからもう一度お試しください 🙏',
+  th: 'ขณะนี้ไม่สามารถดึงข้อมูลปั๊มน้ำมันได้ กรุณาลองใหม่ภายหลัง 🙏',
+  id: 'Saat ini tidak bisa mengambil data SPBU, silakan coba lagi nanti 🙏',
+};
+
 // 手動切換語言時的確認訊息（用該語言回）
 const CONFIRM = {
   'zh-TW': '✅ 已將你的語言設為繁體中文。',
@@ -163,6 +203,26 @@ function chooseStationPrompt(code) {
   return CHOOSE_STATION_PROMPT[code] || CHOOSE_STATION_PROMPT['zh-TW'];
 }
 
+// 加油站「請分享位置」提示句，供 handler 附 quickReply 時使用
+function shareLocationPrompt(code) {
+  return SHARE_LOCATION_PROMPT[code] || SHARE_LOCATION_PROMPT['zh-TW'];
+}
+
+// 「傳送位置」按鈕 label
+function shareLocationLabel(code) {
+  return SHARE_LOCATION_LABEL[code] || SHARE_LOCATION_LABEL['zh-TW'];
+}
+
+// 加油站查詢結果標題列
+function gasStationHeader(code) {
+  return GAS_STATION_HEADER[code] || GAS_STATION_HEADER['zh-TW'];
+}
+
+// 加油站資料取不到的訊息
+function gasStationFail(code) {
+  return GAS_STATION_FAIL[code] || GAS_STATION_FAIL['zh-TW'];
+}
+
 module.exports = {
   noteText,
   resolve,
@@ -174,4 +234,8 @@ module.exports = {
   audioPrefix,
   reminderPrefix,
   chooseStationPrompt,
+  shareLocationPrompt,
+  shareLocationLabel,
+  gasStationHeader,
+  gasStationFail,
 };
