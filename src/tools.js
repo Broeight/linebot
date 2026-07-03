@@ -13,6 +13,7 @@ const { getFuelPriceSummary } = require('./services/fuelPrice');
 const { getTraTrainSummary, normalizeStation, suggestStations, getTraTrainByIds } = require('./services/traTrain');
 const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
+const webSearch = require('./services/webSearch'); // 注意：整包引入、不可解構，測試需 monkeypatch webSearch.search
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -191,6 +192,29 @@ const defs = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description:
+        '上網搜尋最新資訊並取得帶來源網址的摘要。當使用者詢問新聞、時事、最近發生的事、' +
+        '價格行情、產品資訊、人物、醫藥資訊，或你不確定、可能已過時的事實時，先呼叫此工具再回答。' +
+        '不要用於：閒聊、打招呼、創意寫作、翻譯，以及已有專屬工具的查詢' +
+        '（天氣、台鐵、匯率、油價、台灣假日、加油站、發票對獎、提醒、記帳）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              '搜尋關鍵字：簡短 2～8 個詞，直接取自使用者原話的字詞（可中文或英文），' +
+              '不要自己改寫、翻譯或拼湊成長句，以免寫錯字。',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -203,7 +227,10 @@ function timeContext() {
     '若使用者用任何語言（含越南語）詢問台鐵/火車從某站到某站的班次、下一班車，' +
       '就呼叫 get_tra_train 工具，站名直接傳使用者原本說的原文（中／英／越南語都可，' +
       '例如越南語直接傳 Tân Trúc、Trung Lịch），不要自己音譯成漢字。' +
-    '若使用者用任何語言（含越南語）詢問加油站、最近的加油站、哪裡加油，就呼叫 find_gas_station 工具，不要自己編加油站名稱或地址。'
+    '若使用者用任何語言（含越南語）詢問加油站、最近的加油站、哪裡加油，就呼叫 find_gas_station 工具，不要自己編加油站名稱或地址。' +
+    '若使用者用任何語言（含越南語）詢問新聞、時事、價格、產品、人物、醫藥，' +
+      '或其他需要最新資訊、需要查證的事實問題，先呼叫 web_search 工具搜尋再回答；' +
+      '閒聊、翻譯、創意內容不要搜尋。'
   );
 }
 
@@ -321,6 +348,10 @@ async function run(userId, name, argsJson) {
           'A "share location" button will be shown automatically. ' +
           'Reply briefly asking them to share their location; do NOT guess where they are.'
         );
+      }
+      case 'web_search': {
+        const s = await webSearch.search(a.query);
+        return s || 'search unavailable, answer from your knowledge and say so';
       }
       default:
         return `Unknown tool: ${name}`;
