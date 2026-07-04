@@ -22,6 +22,8 @@ const { toAscii } = traTrain;
 const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
 const richMenu = require('./services/richMenu');
+const medicalCard = require('./services/medicalCard');
+const rateAlert = require('./services/rateAlert');
 const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
@@ -169,6 +171,48 @@ async function handleText(userId, text) {
     /^[\d,]+\s*(?:台幣|新台幣|越南盾|越幣|美元|美金|日圓|日幣|人民幣|歐元|韓圓|韓幣|TWD|VND|USD|JPY|CNY|EUR|KRW)\s*換\s*.+$/i
   );
   if (amtConvMatch) return exchangeRate.lookup(trimmed);
+
+  // ── 就醫溝通卡 ───────────────────────────────────────
+  // 關鍵字（一對一）：就醫卡 <症狀> / 看病卡 <症狀>；vi：khám bệnh <症狀> / thẻ khám bệnh <症狀>
+  // 注意：vi 症狀要從「原文」切片（保留聲調），不可用 toAscii 後的字串（比照 tỷ giá route 的 index 切片法）。
+  const medMatch = trimmed.match(/^(?:就醫卡|看病卡)\s*(.*)$/);
+  const medAsciiMatch = toAscii(trimmed).match(/^(?:the )?kham benh\s*(.*)$/);
+  if (medMatch || medAsciiMatch) {
+    const code = await lang.resolve(userId);
+    let symptoms = '';
+    if (medMatch) {
+      symptoms = (medMatch[1] || '').trim();
+    } else if (medAsciiMatch && medAsciiMatch[1]) {
+      // 用比對結果的位置從「原文」切出參數（toAscii 只轉小寫/去聲調，不改字元數/位置）
+      const startIdx = medAsciiMatch.index + medAsciiMatch[0].length - medAsciiMatch[1].length;
+      symptoms = trimmed.slice(startIdx).trim();
+    }
+    if (!symptoms) return lang.medicalAsk(code);
+    const card = await medicalCard.makeCard(symptoms);
+    return card || lang.medicalFail(code);
+  }
+
+  // ── 匯率到價提醒 ─────────────────────────────────────
+  const raClear = /^清除匯率提醒$/.test(trimmed) || /^xoa bao ty gia$/.test(toAscii(trimmed));
+  if (raClear) {
+    const code = await lang.resolve(userId);
+    return rateAlert.clear(userId) ? lang.rateAlertCleared(code) : lang.rateAlertNone(code);
+  }
+  const raSetMatch = trimmed.match(/^匯率提醒\s*([\d.]+)?$/);
+  const raAsciiSetMatch = toAscii(trimmed).match(/^bao ty gia\s*([\d.]+)?$/);
+  if (raSetMatch || raAsciiSetMatch) {
+    const code = await lang.resolve(userId);
+    const numStr = (raSetMatch && raSetMatch[1]) || (raAsciiSetMatch && raAsciiSetMatch[1]);
+    if (!numStr) {
+      const cur = rateAlert.get(userId);
+      if (!cur) return lang.rateAlertNone(code);
+      const rateResult = await exchangeRate.getRate('TWD', 'VND');
+      const current = rateResult && rateResult.ok ? rateResult.rate : null;
+      return lang.rateAlertCurrent(code, cur, current);
+    }
+    const r = await rateAlert.set(userId, Number(numStr));
+    return r ? lang.rateAlertSet(code, r.direction, Number(numStr), r.current) : lang.rateAlertFail(code);
+  }
 
   // ── 放假 / 連假查詢 ─────────────────────────────────────
   // 1) 今天放假嗎

@@ -279,6 +279,67 @@ const MORNING_OFF_NONE = {
   vi: 'Bạn chưa bật bản tin buổi sáng.',
   en: "You don't have the morning digest turned on.",
 };
+// 就醫溝通卡：只打關鍵字沒帶症狀時的引導句
+const MEDICAL_ASK = {
+  'zh-TW': '請描述你的症狀（例如：頭痛兩天、發燒 38 度、對某藥過敏）',
+  vi: 'Hãy mô tả triệu chứng của bạn (ví dụ: đau đầu 2 ngày, sốt 38 độ, dị ứng thuốc...)',
+  en: 'Please describe your symptoms (e.g. headache for 2 days, fever 38°C, allergic to a medicine)',
+};
+// 就醫溝通卡：AI 翻譯失敗時的訊息
+const MEDICAL_FAIL = {
+  'zh-TW': '暫時無法製作就醫卡，請稍後再試 🙏',
+  vi: 'Tạm thời không tạo được thẻ khám bệnh, vui lòng thử lại sau 🙏',
+  en: 'Cannot make the medical card right now, please try again later 🙏',
+};
+// 匯率到價提醒：設定確認（漲到通知，target >= current）
+const RATE_ALERT_SET_UP = {
+  'zh-TW': '🔔 已設定：1 台幣 ≥ {target} 越南盾時通知你（現在 {current}）',
+  vi: '🔔 Đã đặt: sẽ báo khi 1 TWD ≥ {target} VND (hiện tại {current})',
+  en: "🔔 Set: you'll be notified when 1 TWD ≥ {target} VND (now {current})",
+};
+// 匯率到價提醒：設定確認（跌到通知，target < current）
+const RATE_ALERT_SET_DOWN = {
+  'zh-TW': '🔔 已設定：1 台幣 ≤ {target} 越南盾時通知你（現在 {current}）',
+  vi: '🔔 Đã đặt: sẽ báo khi 1 TWD ≤ {target} VND (hiện tại {current})',
+  en: "🔔 Set: you'll be notified when 1 TWD ≤ {target} VND (now {current})",
+};
+// 匯率到價提醒：到價推播
+const RATE_ALERT_HIT = {
+  'zh-TW': '🔔 到價了！現在 1 台幣 = {rate} 越南盾（目標 {target}）',
+  vi: '🔔 Tỷ giá đã đến mức! Hiện tại 1 TWD = {rate} VND (mục tiêu {target})',
+  en: '🔔 Rate target hit! Now 1 TWD = {rate} VND (target {target})',
+};
+// 匯率到價提醒：目前沒有設定
+const RATE_ALERT_NONE = {
+  'zh-TW': '你目前沒有匯率提醒。設定：「匯率提醒 850」',
+  vi: 'Bạn chưa đặt báo tỷ giá. Cách đặt: "báo tỷ giá 850"',
+  en: 'You have no rate alert set. To set one: "rate alert 850"',
+};
+// 匯率到價提醒：查看目前設定（{dir} 由呼叫端代入「漲到」/「跌到」或對應語言的方向詞）
+const RATE_ALERT_CURRENT = {
+  'zh-TW': '目前設定：1 台幣 {dir} {target} 越南盾時通知（現在 {current}）',
+  vi: 'Đang đặt: báo khi 1 TWD {dir} {target} VND (hiện tại {current})',
+  en: "Current setting: notify when 1 TWD {dir} {target} VND (now {current})",
+};
+// 匯率到價提醒：方向詞（給 rateAlertCurrent 用）
+const RATE_ALERT_DIR = {
+  'zh-TW': { up: '≥', down: '≤' },
+  vi: { up: '≥', down: '≤' },
+  en: { up: '≥', down: '≤' },
+};
+// 匯率到價提醒：已清除
+const RATE_ALERT_CLEARED = {
+  'zh-TW': '已清除匯率提醒。',
+  vi: 'Đã xóa báo tỷ giá.',
+  en: 'Rate alert cleared.',
+};
+// 匯率到價提醒：設定失敗（抓不到匯率）
+const RATE_ALERT_FAIL = {
+  'zh-TW': '目前抓不到匯率，請稍後再設定 🙏',
+  vi: 'Hiện không lấy được tỷ giá, vui lòng thử đặt lại sau 🙏',
+  en: 'Cannot fetch the exchange rate right now, please try again later 🙏',
+};
+
 // 越南語使用者首次歡迎訊息
 const WELCOME_VI =
   'Chào bạn! 👋 Mình là trợ lý gia đình.\n' +
@@ -505,6 +566,72 @@ function morningOffNone(code) {
   return MORNING_OFF_NONE[code] || (code === 'ja' || code === 'th' || code === 'id' ? MORNING_OFF_NONE.en : MORNING_OFF_NONE['zh-TW']);
 }
 
+// 就醫溝通卡：只打關鍵字沒帶症狀時的引導句；ja/th/id 回落 en，未知碼回落 zh-TW
+function medicalAsk(code) {
+  if (MEDICAL_ASK[code]) return MEDICAL_ASK[code];
+  if (code === 'ja' || code === 'th' || code === 'id') return MEDICAL_ASK.en;
+  return MEDICAL_ASK['zh-TW'];
+}
+
+// 就醫溝通卡：AI 翻譯失敗訊息；ja/th/id 回落 en，未知碼回落 zh-TW
+function medicalFail(code) {
+  if (MEDICAL_FAIL[code]) return MEDICAL_FAIL[code];
+  if (code === 'ja' || code === 'th' || code === 'id') return MEDICAL_FAIL.en;
+  return MEDICAL_FAIL['zh-TW'];
+}
+
+// 數字格式化：整數就不顯示小數點，否則保留原值（沿用 exchangeRate 的簡單風格）
+function fmtNum(n) {
+  const num = Number(n);
+  if (Number.isNaN(num)) return String(n);
+  return Number.isInteger(num) ? String(num) : String(parseFloat(num.toFixed(2)));
+}
+
+// 匯率到價提醒：設定確認（dir: 'up'|'down'）；ja/th/id 回落 en，未知碼回落 zh-TW
+function rateAlertSet(code, dir, target, current) {
+  const table = dir === 'down' ? RATE_ALERT_SET_DOWN : RATE_ALERT_SET_UP;
+  const tmpl = table[code] || (code === 'ja' || code === 'th' || code === 'id' ? table.en : table['zh-TW']);
+  return tmpl.replace('{target}', fmtNum(target)).replace('{current}', fmtNum(current));
+}
+
+// 匯率到價提醒：到價推播；ja/th/id 回落 en，未知碼回落 zh-TW
+function rateAlertHit(code, rate, target) {
+  const tmpl = RATE_ALERT_HIT[code] || (code === 'ja' || code === 'th' || code === 'id' ? RATE_ALERT_HIT.en : RATE_ALERT_HIT['zh-TW']);
+  return tmpl.replace('{rate}', fmtNum(rate)).replace('{target}', fmtNum(target));
+}
+
+// 匯率到價提醒：目前沒有設定；ja/th/id 回落 en，未知碼回落 zh-TW
+function rateAlertNone(code) {
+  if (RATE_ALERT_NONE[code]) return RATE_ALERT_NONE[code];
+  if (code === 'ja' || code === 'th' || code === 'id') return RATE_ALERT_NONE.en;
+  return RATE_ALERT_NONE['zh-TW'];
+}
+
+// 匯率到價提醒：查看目前設定；alert = { direction, target }，current = 現價數字
+function rateAlertCurrent(code, alert, current) {
+  const tmpl = RATE_ALERT_CURRENT[code] || (code === 'ja' || code === 'th' || code === 'id' ? RATE_ALERT_CURRENT.en : RATE_ALERT_CURRENT['zh-TW']);
+  const dirTable = RATE_ALERT_DIR[code] || RATE_ALERT_DIR['zh-TW'];
+  const dir = dirTable[alert.direction] || dirTable.up;
+  return tmpl
+    .replace('{dir}', dir)
+    .replace('{target}', fmtNum(alert.target))
+    .replace('{current}', current == null ? '?' : fmtNum(current));
+}
+
+// 匯率到價提醒：已清除；ja/th/id 回落 en，未知碼回落 zh-TW
+function rateAlertCleared(code) {
+  if (RATE_ALERT_CLEARED[code]) return RATE_ALERT_CLEARED[code];
+  if (code === 'ja' || code === 'th' || code === 'id') return RATE_ALERT_CLEARED.en;
+  return RATE_ALERT_CLEARED['zh-TW'];
+}
+
+// 匯率到價提醒：設定失敗（抓不到匯率）；ja/th/id 回落 en，未知碼回落 zh-TW
+function rateAlertFail(code) {
+  if (RATE_ALERT_FAIL[code]) return RATE_ALERT_FAIL[code];
+  if (code === 'ja' || code === 'th' || code === 'id') return RATE_ALERT_FAIL.en;
+  return RATE_ALERT_FAIL['zh-TW'];
+}
+
 // 越南語使用者首次歡迎訊息
 function welcomeVi() {
   return WELCOME_VI;
@@ -557,4 +684,12 @@ module.exports = {
   welcomeVi,
   needsWelcome,
   markWelcomed,
+  medicalAsk,
+  medicalFail,
+  rateAlertSet,
+  rateAlertHit,
+  rateAlertNone,
+  rateAlertCurrent,
+  rateAlertCleared,
+  rateAlertFail,
 };

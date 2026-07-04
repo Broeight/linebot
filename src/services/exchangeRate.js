@@ -277,4 +277,4 @@ async function getExchangeSummary(from, to, amount) {
   return summary;
 }
 
-module.exports = { lookup, getExchangeSummary, CURRENCY_NAMES, SUPPORTED };
+module.exports = { lookup, getExchangeSummary, getRate, CURRENCY_NAMES, SUPPORTED };

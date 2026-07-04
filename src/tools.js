@@ -13,6 +13,8 @@ const { getFuelPriceSummary } = require('./services/fuelPrice');
 const { getTraTrainSummary, normalizeStation, suggestStations, getTraTrainByIds } = require('./services/traTrain');
 const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
+const medicalCard = require('./services/medicalCard');
+const rateAlert = require('./services/rateAlert');
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -191,6 +193,36 @@ const defs = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'make_medical_card',
+      description:
+        '使用者想做就醫／看醫生用的中文溝通卡時呼叫；symptoms 傳原話症狀描述（任何語言），不要自行翻譯。',
+      parameters: {
+        type: 'object',
+        properties: {
+          symptoms: { type: 'string', description: '使用者原話描述的症狀／需求，保留原文（任何語言），不要自行翻譯。' },
+        },
+        required: ['symptoms'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_rate_alert',
+      description:
+        '使用者要求匯率（台幣↔越南盾）到某價位時通知就呼叫；target = 每 1 TWD 的 VND 數字。',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'number', description: '目標匯率：每 1 TWD 兌換多少 VND。' },
+        },
+        required: ['target'],
+      },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -203,7 +235,9 @@ function timeContext() {
     '若使用者用任何語言（含越南語）詢問台鐵/火車從某站到某站的班次、下一班車，' +
       '就呼叫 get_tra_train 工具，站名直接傳使用者原本說的原文（中／英／越南語都可，' +
       '例如越南語直接傳 Tân Trúc、Trung Lịch），不要自己音譯成漢字。' +
-    '若使用者用任何語言（含越南語）詢問加油站、最近的加油站、哪裡加油，就呼叫 find_gas_station 工具，不要自己編加油站名稱或地址。'
+    '若使用者用任何語言（含越南語）詢問加油站、最近的加油站、哪裡加油，就呼叫 find_gas_station 工具，不要自己編加油站名稱或地址。' +
+    '若使用者用任何語言（含越南語）要求製作就醫／看醫生用的中文溝通卡，就呼叫 make_medical_card 工具，symptoms 傳使用者原話（不要自行翻譯）。' +
+    '若使用者用任何語言（含越南語）要求在匯率到某個價位時通知他（台幣兌越南盾），就呼叫 set_rate_alert 工具，target 傳每 1 TWD 對應的 VND 數字。'
   );
 }
 
@@ -321,6 +355,16 @@ async function run(userId, name, argsJson) {
           'A "share location" button will be shown automatically. ' +
           'Reply briefly asking them to share their location; do NOT guess where they are.'
         );
+      }
+      case 'make_medical_card': {
+        const card = await medicalCard.makeCard(a.symptoms);
+        return card || 'Cannot make the card right now.';
+      }
+      case 'set_rate_alert': {
+        const r = await rateAlert.set(userId, Number(a.target));
+        if (!r) return 'Cannot fetch the exchange rate right now.';
+        const dirSymbol = r.direction === 'down' ? '<=' : '>=';
+        return `Rate alert saved: notify when 1 TWD ${dirSymbol} ${Number(a.target)} VND (now ${r.current}).`;
       }
       default:
         return `Unknown tool: ${name}`;
