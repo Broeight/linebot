@@ -382,9 +382,17 @@ async function handleText(userId, text) {
   // ── 預設：AI 對話（可用工具：自然語句設提醒、記帳、查發票、查天氣）──
   const history = conversation.append(userId, 'user', trimmed);
   const fallbackCode = await lang.resolve(userId);
+  let webSearchCalls = 0; // 每則訊息最多 1 次聯網搜尋（省額度、控延遲）
   const reply = await ai.chat(history, {
     tools: tools.defs,
-    runTool: (name, args) => tools.run(userId, name, args),
+    runTool: (name, args) => {
+      if (name === 'web_search' && ++webSearchCalls > 1) {
+        return Promise.resolve(
+          'Web search already used for this message; answer with the information you already have.'
+        );
+      }
+      return tools.run(userId, name, args);
+    },
     systemExtra: tools.timeContext(),
     fallbackText: lang.chatFallback(fallbackCode),
   });

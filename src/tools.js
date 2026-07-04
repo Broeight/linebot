@@ -15,6 +15,7 @@ const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
 const medicalCard = require('./services/medicalCard');
 const rateAlert = require('./services/rateAlert');
+const webSearch = require('./services/webSearch'); // 注意：整包引入、不可解構，測試需 monkeypatch webSearch.search
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -26,7 +27,7 @@ const defs = [
       parameters: {
         type: 'object',
         properties: {
-          location: { type: 'string', description: '地點名稱，用中文或英文（例如「新竹市」或「Hsinchu」）。' },
+          location: { type: 'string', description: '地點名稱，直接傳使用者原話裡的地名（中文、英文或越南語皆可，例如「新竹市」、「Hsinchu」、越南語直接傳 "Tân Trúc"）。絕對不要自行音譯或翻譯地名，系統會自動解析。' },
         },
         required: ['location'],
       },
@@ -223,6 +224,30 @@ const defs = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description:
+        '上網搜尋最新資訊並取得帶來源網址的摘要。當使用者詢問新聞、時事、最近發生的事、' +
+        '價格行情、產品資訊、人物、醫藥資訊，或你不確定、可能已過時的事實時，先呼叫此工具再回答。' +
+        '不要用於：閒聊、打招呼、創意寫作、翻譯，以及已有專屬工具的查詢' +
+        '（天氣、台鐵、匯率、油價、台灣假日、加油站、發票對獎、提醒、記帳）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              '搜尋關鍵字：簡短 2～8 個詞，直接取自使用者原話的字詞（可中文或英文），' +
+              '不要自己改寫、翻譯或拼湊成長句，以免寫錯字。',
+          },
+        },
+        required: ['query'],
+
+      },
+    },
+  },
 ];
 
 // 提供給模型的背景資訊（目前時間 + 使用工具的指示）
@@ -237,7 +262,11 @@ function timeContext() {
       '例如越南語直接傳 Tân Trúc、Trung Lịch），不要自己音譯成漢字。' +
     '若使用者用任何語言（含越南語）詢問加油站、最近的加油站、哪裡加油，就呼叫 find_gas_station 工具，不要自己編加油站名稱或地址。' +
     '若使用者用任何語言（含越南語）要求製作就醫／看醫生用的中文溝通卡，就呼叫 make_medical_card 工具，symptoms 傳使用者原話（不要自行翻譯）。' +
-    '若使用者用任何語言（含越南語）要求在匯率到某個價位時通知他（台幣兌越南盾），就呼叫 set_rate_alert 工具，target 傳每 1 TWD 對應的 VND 數字。'
+    '若使用者用任何語言（含越南語）要求在匯率到某個價位時通知他（台幣兌越南盾），就呼叫 set_rate_alert 工具，target 傳每 1 TWD 對應的 VND 數字。' +
+    '若使用者用任何語言（含越南語）詢問新聞、時事、價格、產品、人物、醫藥，' +
+      '或其他需要最新資訊、需要查證的事實問題，先呼叫 web_search 工具搜尋再回答；' +
+      '閒聊、翻譯、創意內容不要搜尋。'
+
   );
 }
 
@@ -365,6 +394,11 @@ async function run(userId, name, argsJson) {
         if (!r) return 'Cannot fetch the exchange rate right now.';
         const dirSymbol = r.direction === 'down' ? '<=' : '>=';
         return `Rate alert saved: notify when 1 TWD ${dirSymbol} ${Number(a.target)} VND (now ${r.current}).`;
+      }
+      case 'web_search': {
+        const s = await webSearch.search(a.query);
+        return s || 'search unavailable, answer from your knowledge and say so';
+
       }
       default:
         return `Unknown tool: ${name}`;
