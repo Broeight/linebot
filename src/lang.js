@@ -653,6 +653,7 @@ function markWelcomed(userId) {
 }
 
 module.exports = {
+  detect,
   noteText,
   resolve,
   nameToCode,
