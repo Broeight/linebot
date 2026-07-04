@@ -13,6 +13,8 @@ const { getFuelPriceSummary } = require('./services/fuelPrice');
 const { getTraTrainSummary, normalizeStation, suggestStations, getTraTrainByIds } = require('./services/traTrain');
 const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
+const medicalCard = require('./services/medicalCard');
+const rateAlert = require('./services/rateAlert');
 const webSearch = require('./services/webSearch'); // 注意：整包引入、不可解構，測試需 monkeypatch webSearch.search
 
 // 工具定義（給模型看的 schema）
@@ -195,6 +197,36 @@ const defs = [
   {
     type: 'function',
     function: {
+      name: 'make_medical_card',
+      description:
+        '使用者想做就醫／看醫生用的中文溝通卡時呼叫；symptoms 傳原話症狀描述（任何語言），不要自行翻譯。',
+      parameters: {
+        type: 'object',
+        properties: {
+          symptoms: { type: 'string', description: '使用者原話描述的症狀／需求，保留原文（任何語言），不要自行翻譯。' },
+        },
+        required: ['symptoms'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_rate_alert',
+      description:
+        '使用者要求匯率（台幣↔越南盾）到某價位時通知就呼叫；target = 每 1 TWD 的 VND 數字。',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'number', description: '目標匯率：每 1 TWD 兌換多少 VND。' },
+        },
+        required: ['target'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'web_search',
       description:
         '上網搜尋最新資訊並取得帶來源網址的摘要。當使用者詢問新聞、時事、最近發生的事、' +
@@ -212,6 +244,7 @@ const defs = [
           },
         },
         required: ['query'],
+
       },
     },
   },
@@ -228,9 +261,12 @@ function timeContext() {
       '就呼叫 get_tra_train 工具，站名直接傳使用者原本說的原文（中／英／越南語都可，' +
       '例如越南語直接傳 Tân Trúc、Trung Lịch），不要自己音譯成漢字。' +
     '若使用者用任何語言（含越南語）詢問加油站、最近的加油站、哪裡加油，就呼叫 find_gas_station 工具，不要自己編加油站名稱或地址。' +
+    '若使用者用任何語言（含越南語）要求製作就醫／看醫生用的中文溝通卡，就呼叫 make_medical_card 工具，symptoms 傳使用者原話（不要自行翻譯）。' +
+    '若使用者用任何語言（含越南語）要求在匯率到某個價位時通知他（台幣兌越南盾），就呼叫 set_rate_alert 工具，target 傳每 1 TWD 對應的 VND 數字。' +
     '若使用者用任何語言（含越南語）詢問新聞、時事、價格、產品、人物、醫藥，' +
       '或其他需要最新資訊、需要查證的事實問題，先呼叫 web_search 工具搜尋再回答；' +
       '閒聊、翻譯、創意內容不要搜尋。'
+
   );
 }
 
@@ -349,9 +385,20 @@ async function run(userId, name, argsJson) {
           'Reply briefly asking them to share their location; do NOT guess where they are.'
         );
       }
+      case 'make_medical_card': {
+        const card = await medicalCard.makeCard(a.symptoms);
+        return card || 'Cannot make the card right now.';
+      }
+      case 'set_rate_alert': {
+        const r = await rateAlert.set(userId, Number(a.target));
+        if (!r) return 'Cannot fetch the exchange rate right now.';
+        const dirSymbol = r.direction === 'down' ? '<=' : '>=';
+        return `Rate alert saved: notify when 1 TWD ${dirSymbol} ${Number(a.target)} VND (now ${r.current}).`;
+      }
       case 'web_search': {
         const s = await webSearch.search(a.query);
         return s || 'search unavailable, answer from your knowledge and say so';
+
       }
       default:
         return `Unknown tool: ${name}`;
