@@ -22,9 +22,26 @@ const { toAscii } = traTrain;
 const traChoice = require('./services/traChoice');
 const gasStation = require('./services/gasStation');
 const richMenu = require('./services/richMenu');
+const groupTranslate = require('./services/groupTranslate');
 const store = require('./store');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
+
+// ── 群組翻譯橋：中越雙語文案（見 DESIGN §4，逐字照抄）─────────────────────
+const GROUP_INTRO_TEXT =
+  '大家好！我是翻譯小幫手 🌐\n' +
+  '我會自動把群組裡的「中文 ↔ 越南語」互相翻譯，方便全家溝通。\n' +
+  '輸入「翻譯關」可暫停、「翻譯開」恢復。\n' +
+  '---\n' +
+  'Xin chào cả nhà! Mình là trợ lý phiên dịch 🌐\n' +
+  'Mình sẽ tự động dịch qua lại giữa tiếng Trung ↔ tiếng Việt trong nhóm.\n' +
+  'Gõ "tắt dịch" để tạm dừng, "bật dịch" để bật lại.';
+const GROUP_OFF_CONFIRM = '已暫停群組翻譯。輸入「翻譯開」恢復。\nĐã tạm dừng dịch. Gõ "bật dịch" để bật lại.';
+const GROUP_ON_CONFIRM = '已開啟群組翻譯 🌐\nĐã bật dịch nhóm 🌐';
+
+function groupIntroText() {
+  return GROUP_INTRO_TEXT;
+}
 
 /**
  * 把候選站名清單組成 LINE Quick Reply 物件（≤5 顆，label/text 皆用中文站名）。
@@ -401,14 +418,81 @@ async function handleImage(userId, messageId) {
 }
 
 /**
+ * 群組/多人聊天室的文字訊息：只做「翻譯橋」與開關指令，不進對話記憶、不觸發
+ * 指令或 AI 對話、不碰 richMenu/onboarding hook——群組訊息零副作用。
+ * @param {string} groupId
+ * @param {string} text
+ * @returns {Promise<string|null>}
+ */
+async function handleGroupText(groupId, text) {
+  const trimmed = (text || '').trim();
+
+  // 開關指令（中/越）；越南語用 toAscii 摺疊聲調比對。不受目前開關狀態影響。
+  if (/^翻譯關$/.test(trimmed) || /^tat dich$/.test(toAscii(trimmed))) {
+    groupTranslate.setEnabled(groupId, false);
+    return GROUP_OFF_CONFIRM;
+  }
+  if (/^翻譯開$/.test(trimmed) || /^bat dich$/.test(toAscii(trimmed))) {
+    groupTranslate.setEnabled(groupId, true);
+    return GROUP_ON_CONFIRM;
+  }
+
+  if (!groupTranslate.isEnabled(groupId)) return null; // 關閉中 → 全部靜默
+  if (!groupTranslate.isSubstantial(trimmed)) return null;
+  const dir = groupTranslate.bridgeDirection(trimmed);
+  if (!dir) return null;
+  const translated = await groupTranslate.translateFor(dir, trimmed);
+  return translated && translated.trim() ? `🌐 ${translated.trim()}` : null; // 翻譯失敗 → 靜默
+}
+
+/**
+ * 群組/多人聊天室的語音訊息：Whisper 聽打後同 handleGroupText 判斷翻譯，
+ * 回「🎙「原文」\n🌐 譯文」。聽不清楚／非 vi-zh 一律靜默（不回錯誤訊息）。
+ * @param {string} groupId
+ * @param {string} messageId
+ * @returns {Promise<string|null>}
+ */
+async function handleGroupAudio(groupId, messageId) {
+  if (!groupTranslate.isEnabled(groupId)) return null; // 關閉中 → 全部靜默
+  let buf;
+  try {
+    buf = await getContentBuffer(messageId);
+  } catch (e) {
+    console.error('抓群組語音失敗：', e.message);
+    return null; // 群組內靜默，不回錯誤訊息洗版
+  }
+  const text = await ai.transcribe(buf);
+  if (!text || !groupTranslate.isSubstantial(text)) return null;
+  const dir = groupTranslate.bridgeDirection(text);
+  if (!dir) return null;
+  const translated = await groupTranslate.translateFor(dir, text);
+  return translated && translated.trim() ? `🎙「${text}」\n🌐 ${translated.trim()}` : null;
+}
+
+/**
  * 依訊息類型分派；回傳要回覆的字串、{ text, quickReply }，或 null（不回覆）。
  * @param {object} event
  * @returns {Promise<string|{text:string, quickReply:object}|null>}
  */
 async function replyForEvent(event) {
+  // bot 被拉進群組/多人聊天室 → 回中越雙語簡介
+  if (event.type === 'join') return groupIntroText();
   if (event.type !== 'message') return null;
-  const userId = event.source?.userId;
+  const src = event.source || {};
+  const isGroup = src.type === 'group' || src.type === 'room';
+  const groupId = src.groupId || src.roomId;
+  const userId = src.userId;
   const msg = event.message;
+
+  if (isGroup) {
+    // 第二層保險：群組處理不管發生什麼錯都靜默（回 null），
+    // 避免例外冒到 index.js 把錯誤訊息送進群組洗版。
+    if (msg.type === 'text') return handleGroupText(groupId, msg.text).catch(() => null);
+    if (msg.type === 'audio') return handleGroupAudio(groupId, msg.id).catch(() => null);
+    return null; // 群組內圖片/貼圖等其他型別一律安靜
+  }
+
+  // ── 以下為既有一對一分派，行為不變 ─────────────────────────
   if (msg.type === 'text') return handleText(userId, msg.text);
   if (msg.type === 'audio') return handleAudio(userId, msg.id);
   if (msg.type === 'image') return handleImage(userId, msg.id);
@@ -416,4 +500,12 @@ async function replyForEvent(event) {
   return null; // 貼圖、影片等先略過
 }
 
-module.exports = { handleText, handleAudio, handleImage, handleLocation, replyForEvent };
+module.exports = {
+  handleText,
+  handleAudio,
+  handleImage,
+  handleLocation,
+  handleGroupText,
+  handleGroupAudio,
+  replyForEvent,
+};
