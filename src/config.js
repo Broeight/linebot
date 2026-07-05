@@ -15,6 +15,11 @@ const config = {
   },
   port: Number(process.env.PORT) || 3000,
   morningTime: process.env.MORNING_TIME || '07:00', // 每日早安推播時間（台北時間 HH:mm）
+  // 選填：Upstash Redis 雲端同步（兩個都設才啟用；不設＝僅本機檔案）
+  upstash: {
+    url: process.env.UPSTASH_REDIS_REST_URL || '',
+    token: process.env.UPSTASH_REDIS_REST_TOKEN || '',
+  },
 };
 
 // 啟動前先檢查必要的環境變數，避免之後才出現難懂的錯誤

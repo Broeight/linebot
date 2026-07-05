@@ -4,26 +4,14 @@
 // ⚠️ 提醒存在 data/reminders.json（檔案）。伺服器重啟不會遺失，
 //    但若伺服器在該時刻沒開著，一次性提醒會在下次啟動時補送、每日提醒則會略過當天。
 
-const fs = require('fs');
-const path = require('path');
 const ai = require('../ai');
 const lang = require('../lang');
 const { client } = require('../line');
+const store = require('../store');
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
-const FILE = path.join(DATA_DIR, 'reminders.json');
-
-function load() {
-  try {
-    return JSON.parse(fs.readFileSync(FILE, 'utf8'));
-  } catch {
-    return [];
-  }
-}
-function save(list) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(list, null, 2));
-}
+const FILE = 'reminders.json';
+const load = () => store.load(FILE);
+const save = (list) => store.save(FILE, list);
 
 // 台北時間（無日光節約，固定 +08:00）的各部分
 function taipeiParts() {

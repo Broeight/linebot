@@ -6,6 +6,7 @@ assertConfig();
 const { line, client: lineClient } = require('./line');
 const handler = require('./handler');
 const lang = require('./lang');
+const store = require('./store');
 const reminder = require('./services/reminder');
 const morning = require('./services/morning');
 const rateAlert = require('./services/rateAlert');
@@ -79,11 +80,20 @@ async function handleEvent(event) {
   }
 }
 
-app.listen(config.port, () => {
-  console.log(`🚀 LINE bot 已啟動，監聽埠號 ${config.port}`);
-  console.log(`   Webhook 路徑： POST /webhook`);
-  reminder.start(); // 啟動提醒排程
-  morning.start(); // 啟動每日早安推播排程
-  rateAlert.start(); // 啟動匯率到價提醒排程
-  richMenu.ensureSetup().catch((e) => console.error('richmenu setup 失敗：', e));
-});
+// 先從雲端還原資料（未設定雲端時 init 立即完成），完成後才開始收 webhook。
+// store.init() 設計上絕不 throw；try/catch 是最後保險——任何意外都不能讓 bot 起不來。
+(async () => {
+  try {
+    await store.init();
+  } catch (e) {
+    console.error('store.init 意外失敗（退回檔案模式繼續啟動）：', e);
+  }
+  app.listen(config.port, () => {
+    console.log(`🚀 LINE bot 已啟動，監聽埠號 ${config.port}`);
+    console.log(`   Webhook 路徑： POST /webhook`);
+    reminder.start(); // 啟動提醒排程
+    morning.start(); // 啟動每日早安推播排程
+    rateAlert.start(); // 啟動匯率到價提醒排程
+    richMenu.ensureSetup().catch((e) => console.error('richmenu setup 失敗：', e));
+  });
+})();
