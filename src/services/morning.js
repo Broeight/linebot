@@ -11,6 +11,8 @@ const birthday = require('./birthday');
 const { config } = require('../config');
 const lang = require('../lang');
 const ai = require('../ai');
+const lunarSvc = require('./lunar');
+const vnHoliday = require('./vnHoliday');
 
 const FILE = 'morning.json';
 
@@ -38,6 +40,26 @@ function unsubscribe(userId, code = 'zh-TW') {
   return before.length === after.length ? lang.morningOffNone(code) : lang.morningOff(code);
 }
 
+/**
+ * 早安推播的農曆段（一個 part，可能 1～3 行）。純函式：日期由參數傳入，供離線測試。
+ * @param {string} code 語言碼
+ * @param {string} ymd  'YYYY-MM-DD'（正式呼叫傳 store.taipei().date）
+ * @returns {string}
+ */
+function lunarSection(code, ymd) {
+  const tz = code === 'vi' ? lunarSvc.TZ_VN : lunarSvc.TZ_TW; // zh 及其他語言 → 台灣農曆
+  const l = lunarSvc.lunarFromYmd(ymd, tz);
+  const style = code === 'vi' ? 'vi' : (code === 'zh-TW' ? 'zh' : 'en');
+  let text = lang.morningLunarLine(code, lunarSvc.lunarDateText(l, style));
+  const mr = lunarSvc.mung1OrRam(l);
+  if (mr) text += '\n' + lang.mungRamNote(code, mr);
+  if (code === 'vi') {
+    const h = vnHoliday.todayVnHoliday(ymd);   // 越南節日祝福只給 vi 訂閱者
+    if (h) text += '\n' + h.greetVi;
+  }
+  return text;
+}
+
 async function buildMessage(sub) {
   let code = 'zh-TW';
   try {
@@ -47,6 +69,10 @@ async function buildMessage(sub) {
   }
 
   const parts = [lang.morningGreeting(code)];
+
+  try {
+    parts.push(lunarSection(code, store.taipei().date));
+  } catch { /* 農曆失敗就略過該行 */ }
 
   let weatherText = '';
   try {
@@ -120,4 +146,4 @@ function start() {
   console.log(`☀️ 早安推播排程已啟動（每天 ${config.morningTime}）`);
 }
 
-module.exports = { subscribe, unsubscribe, sendAll, start };
+module.exports = { subscribe, unsubscribe, sendAll, start, lunarSection };

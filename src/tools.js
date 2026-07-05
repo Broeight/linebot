@@ -16,6 +16,7 @@ const gasStation = require('./services/gasStation');
 const medicalCard = require('./services/medicalCard');
 const rateAlert = require('./services/rateAlert');
 const webSearch = require('./services/webSearch'); // 注意：整包引入、不可解構，測試需 monkeypatch webSearch.search
+const vnHoliday = require('./services/vnHoliday');
 
 // 工具定義（給模型看的 schema）
 const defs = [
@@ -227,6 +228,31 @@ const defs = [
   {
     type: 'function',
     function: {
+      name: 'get_lunar_info',
+      description:
+        '查詢農曆（陰曆）資訊：今天的農曆日期、Tết（越南農曆新年）倒數、下一個越南國定假日。' +
+        '當使用者用任何語言（尤其越南語）問今天農曆幾號、初一十五、還有多久到 Tết／過年、' +
+        '越南節日（còn bao lâu đến Tết? / 越南過年是哪天）時呼叫。' +
+        '越南農曆（UTC+7）與台灣農曆（UTC+8）偶爾差一天，差異由系統自動計算並在結果中註明，' +
+        '你不需要也不可以自行換算農曆。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query_type: {
+            type: 'string',
+            enum: ['today_lunar', 'next_tet', 'vn_holidays'],
+            description:
+              'today_lunar=今天農曆日期（台灣＋越南兩套）；next_tet=Tết 倒數與確切日期；' +
+              'vn_holidays=下一個越南國定假日。',
+          },
+        },
+        required: ['query_type'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'web_search',
       description:
         '上網搜尋最新資訊並取得帶來源網址的摘要。當使用者詢問新聞、時事、最近發生的事、' +
@@ -265,7 +291,9 @@ function timeContext() {
     '若使用者用任何語言（含越南語）要求在匯率到某個價位時通知他（台幣兌越南盾），就呼叫 set_rate_alert 工具，target 傳每 1 TWD 對應的 VND 數字。' +
     '若使用者用任何語言（含越南語）詢問新聞、時事、價格、產品、人物、醫藥，' +
       '或其他需要最新資訊、需要查證的事實問題，先呼叫 web_search 工具搜尋再回答；' +
-      '閒聊、翻譯、創意內容不要搜尋。'
+      '閒聊、翻譯、創意內容不要搜尋。' +
+    '若使用者用任何語言（含越南語）詢問農曆日期、初一或十五、Tết／越南過年倒數、越南節日，' +
+      '就呼叫 get_lunar_info 工具，不要自己推算農曆（越南與台灣農曆可能差一天，必須由工具計算）。'
 
   );
 }
@@ -395,6 +423,11 @@ async function run(userId, name, argsJson) {
         const dirSymbol = r.direction === 'down' ? '<=' : '>=';
         return `Rate alert saved: notify when 1 TWD ${dirSymbol} ${Number(a.target)} VND (now ${r.current}).`;
       }
+      case 'get_lunar_info':
+        return (
+          (await vnHoliday.getLunarSummary({ queryType: a.query_type })) ||
+          'Cannot compute lunar calendar info right now.'
+        );
       case 'web_search': {
         const s = await webSearch.search(a.query);
         return s || 'search unavailable, answer from your knowledge and say so';
