@@ -145,6 +145,51 @@ const IMAGE_UNCLEAR = {
   id: 'Saya tidak bisa memahami gambar ini. Coba kirim yang lebih jelas?',
 };
 
+// ── 農曆／越南節日（F1／F2／F3）─────────────────────────────────────────
+// F1：今天農曆（{solar} 由呼叫端代入該語言慣用的國曆格式）
+const LUNAR_TODAY = {
+  'zh-TW': '📅 今天是 {solarZh}（國曆），農曆{lunarZh}',        // solarZh = 'YYYY/MM/DD'
+  vi: '📅 Hôm nay {solarVi} (dương lịch) là {lunarVi} âm lịch', // solarVi = 'DD/MM/YYYY'
+  en: '📅 Today {solarIso} is {lunarEn} in the lunar calendar',  // solarIso = 'YYYY-MM-DD'
+};
+// F1：兩地農曆不同日的註記（罕見；2030 正月會連續一個月觸發）
+const LUNAR_DIFF_NOTE = {
+  'zh-TW': 'ℹ️ 台灣與越南農曆今天不同日：越南農曆為{other}',
+  vi: 'ℹ️ Lưu ý: âm lịch Đài Loan hôm nay là {other} (lệch 1 ngày với âm lịch Việt Nam)',
+  en: 'ℹ️ Note: Taiwan and Vietnam lunar dates differ today. The other calendar shows {other}.',
+};
+// F3：早安農曆行
+const MORNING_LUNAR_LINE = {
+  'zh-TW': '📅 農曆{lunar}',            // 例：📅 農曆五月廿一
+  vi: '📅 Âm lịch: {lunar}',            // 例：📅 Âm lịch: ngày 21 tháng 5
+  en: '📅 Lunar: {lunar}',
+};
+// F3：初一／十五加註（PRD 原句照抄）
+const MUNG_RAM_NOTE = {
+  'zh-TW': { mung1: '今天是農曆初一（拜拜日）🙏', ram: '今天是農曆十五（拜拜日）🙏' },
+  vi: { mung1: 'Hôm nay là mùng 1 âm lịch 🙏', ram: 'Hôm nay là ngày rằm 🙏' },
+  en: { mung1: 'Today is the 1st day of the lunar month 🙏', ram: 'Today is the 15th day (full moon) of the lunar month 🙏' },
+};
+// F2：下一個越南節日＋Tết 倒數（兩段合成一則回覆）
+const VN_HOLIDAY_REPLY = {
+  'zh-TW': '🇻🇳 下一個越南節日：{name}\n📆 {date}（{away}）\n\n🧧 Tết 倒數：還有 {tetDays} 天到 Tết（{tetDate}，{yearName}年）',
+  vi: '🇻🇳 Ngày lễ tiếp theo: {name}\n📆 {date} ({away})\n\n🧧 Còn {tetDays} ngày nữa đến Tết {yearName} ({tetDate})!',
+  en: '🇻🇳 Next Vietnamese holiday: {name}\n📆 {date} ({away})\n\n🧧 {tetDays} days until Tet {yearName} ({tetDate})',
+};
+// {away}：daysAway>0 → zh『還有 N 天』/ vi『còn N ngày』/ en『in N days』；
+// daysAway===0 → zh『就是今天！』/ vi『là hôm nay!』/ en『today!』。
+const VN_HOLIDAY_AWAY = {
+  'zh-TW': { some: (n) => `還有 ${n} 天`, today: '就是今天！' },
+  vi: { some: (n) => `còn ${n} ngày`, today: 'là hôm nay!' },
+  en: { some: (n) => `in ${n} days`, today: 'today!' },
+};
+// tetDays===0（今天就是 Tết）→ 整個 Tết 段落改為下列句子
+const VN_HOLIDAY_TET_TODAY = {
+  'zh-TW': '🧧 今天就是 Tết！新年快樂！',
+  vi: '🧧 Hôm nay là Tết! Chúc mừng năm mới!',
+  en: '🧧 Today is Tet! Happy New Year!',
+};
+
 // ── 功能選單（helpText 從 handler.js 搬過來）───────────────────────────
 const HELP_MENU = {
   'zh-TW':
@@ -162,6 +207,7 @@ const HELP_MENU = {
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
+    '🈷️ 農曆：「農曆」｜越南節日/Tết 倒數：「越南節日」\n' +
     '⛽ 油價：「油價」「95油價」「柴油油價」\n' +
     '⛽ 加油站：「加油站」→ 分享位置找最近的\n' +
     '🚆 台鐵：「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
@@ -186,6 +232,7 @@ const HELP_MENU = {
     '💰 Ghi chi tiêu: 「記帳 午餐 120」｜Xem báo cáo: 「本月花費」\n' +
     '💱 Tỷ giá: gõ 「tỷ giá」(mặc định TWD→VND) hoặc 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 Ngày nghỉ: 「今天放假嗎」「下一個連假」「7月假日」\n' +
+    '🈷️ Âm lịch: gõ 「âm lịch」｜Ngày lễ VN & đếm ngược Tết: 「Tết」hoặc「lễ Việt Nam」\n' +
     '⛽ Giá xăng dầu: gõ 「giá xăng」hoặc「油價」「95油價」「柴油油價」\n' +
     '⛽ Trạm xăng gần nhất: 「加油站」→ chia sẻ vị trí để tìm trạm gần nhất\n' +
     '🚆 Tàu hoả (Đài Loan): 「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
@@ -209,6 +256,7 @@ const HELP_MENU = {
     '💰 Expenses: 「記帳 午餐 120」｜Summary: 「本月花費」\n' +
     '💱 Exchange rate: 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 Holidays: 「今天放假嗎」「下一個連假」「7月假日」\n' +
+    '🈷️ Lunar date: 「農曆」or「âm lịch」｜VN holidays & Tet countdown: 「Tết」\n' +
     '⛽ Fuel price: 「油價」「95油價」「柴油油價」\n' +
     '⛽ Nearest gas station: 「加油站」→ share your location\n' +
     '🚆 Taiwan Railway: 「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
@@ -538,6 +586,94 @@ function weatherAsk(code) {
   return WEATHER_ASK['zh-TW'];
 }
 
+// ── 農曆／越南節日（F1／F2／F3）helper ──────────────────────────────────
+
+// F1：兩地農曆不同日的註記（模板代入 {other}）；ja/th/id 回落 en，未知碼回落 zh-TW
+function lunarDiffNote(code, otherText) {
+  const tmpl = LUNAR_DIFF_NOTE[code] || (code === 'ja' || code === 'th' || code === 'id' ? LUNAR_DIFF_NOTE.en : LUNAR_DIFF_NOTE['zh-TW']);
+  return tmpl.replace('{other}', otherText);
+}
+
+// F1：今天農曆回覆（組裝規則見 DESIGN §七）
+// data = { today:'YYYY-MM-DD', tw, vn, differs, fmt }（tw/vn 為 lunar.solar2lunar 物件，fmt=lunarSvc.lunarDateText）
+function lunarToday(code, data) {
+  const { today, tw, vn, differs, fmt } = data;
+  const [y, m, d] = today.split('-');
+  const solarZh = `${y}/${m}/${d}`;
+  const solarVi = `${d}/${m}/${y}`;
+  const solarIso = today;
+
+  if (code === 'vi') {
+    let text = LUNAR_TODAY.vi.replace('{solarVi}', solarVi).replace('{lunarVi}', fmt(vn, 'vi'));
+    if (differs) text += '\n' + lunarDiffNote('vi', fmt(tw, 'vi'));
+    return text;
+  }
+
+  if (code === 'zh-TW' || !LUNAR_TODAY[code]) {
+    let text = LUNAR_TODAY['zh-TW'].replace('{solarZh}', solarZh).replace('{lunarZh}', fmt(tw, 'zh'));
+    if (differs) text += '\n' + lunarDiffNote('zh-TW', fmt(vn, 'zh'));
+    return text;
+  }
+
+  // en/ja/th/id → en 模板 + 台灣農曆（家人在台灣）
+  let text = LUNAR_TODAY.en.replace('{solarIso}', solarIso).replace('{lunarEn}', fmt(tw, 'en'));
+  if (differs) text += '\n' + lunarDiffNote('en', fmt(vn, 'en'));
+  return text;
+}
+
+// F3：早安農曆行（模板代入 {lunar}）；ja/th/id 回落 en，未知碼回落 zh-TW
+function morningLunarLine(code, lunarText) {
+  const tmpl = MORNING_LUNAR_LINE[code] || (code === 'ja' || code === 'th' || code === 'id' ? MORNING_LUNAR_LINE.en : MORNING_LUNAR_LINE['zh-TW']);
+  return tmpl.replace('{lunar}', lunarText);
+}
+
+// F3：初一／十五加註（kind: 'mung1'|'ram'）；ja/th/id 回落 en，未知碼回落 zh-TW
+function mungRamNote(code, kind) {
+  const table = MUNG_RAM_NOTE[code] || (code === 'ja' || code === 'th' || code === 'id' ? MUNG_RAM_NOTE.en : MUNG_RAM_NOTE['zh-TW']);
+  return table[kind];
+}
+
+// F2：下一個越南節日＋Tết 倒數（合成一則回覆）；next = vnHoliday.nextVnHoliday()，tet = vnHoliday.tetCountdown()
+function vnHolidayReply(code, next, tet) {
+  const tmpl = VN_HOLIDAY_REPLY[code] || (code === 'ja' || code === 'th' || code === 'id' ? VN_HOLIDAY_REPLY.en : VN_HOLIDAY_REPLY['zh-TW']);
+  const awayTable = VN_HOLIDAY_AWAY[code] || (code === 'ja' || code === 'th' || code === 'id' ? VN_HOLIDAY_AWAY.en : VN_HOLIDAY_AWAY['zh-TW']);
+  const yearName = code === 'zh-TW' ? tet.yearNameZh : tet.yearNameVi;
+
+  const name = next ? (code === 'vi' ? next.vi : code === 'zh-TW' ? next.zh : next.en) : '';
+  const away = next ? (next.daysAway <= 0 ? awayTable.today : awayTable.some(next.daysAway)) : '';
+
+  if (tet.days <= 0) {
+    // 今天就是 Tết：整段換成祝賀句（DESIGN §七）
+    const tetToday = VN_HOLIDAY_TET_TODAY[code] || (code === 'ja' || code === 'th' || code === 'id' ? VN_HOLIDAY_TET_TODAY.en : VN_HOLIDAY_TET_TODAY['zh-TW']);
+    if (!next) return tetToday;
+    return tmpl
+      .replace('{name}', name)
+      .replace('{date}', next.date)
+      .replace('{away}', away)
+      .split('\n\n')[0] + '\n\n' + tetToday;
+  }
+
+  if (!next) {
+    // 找不到下一個節日（理論上不會發生，防禦性處理）：只回 Tết 段落
+    return tmpl
+      .replace('{name}', '—')
+      .replace('{date}', '—')
+      .replace('{away}', '')
+      .split('\n\n')[1]
+      .replace('{tetDays}', tet.days)
+      .replace('{tetDate}', tet.date)
+      .replace('{yearName}', yearName);
+  }
+
+  return tmpl
+    .replace('{name}', name)
+    .replace('{date}', next.date)
+    .replace('{away}', away)
+    .replace('{tetDays}', tet.days)
+    .replace('{tetDate}', tet.date)
+    .replace('{yearName}', yearName);
+}
+
 // 早安推播問候語（隨機取一句）；ja/th/id 回落 en，未知碼回落 zh-TW
 function morningGreeting(code) {
   const list = MORNING_GREETINGS[code] || (code === 'ja' || code === 'th' || code === 'id' ? MORNING_GREETINGS.en : MORNING_GREETINGS['zh-TW']);
@@ -677,6 +813,11 @@ module.exports = {
   helpMenu,
   traUsage,
   weatherAsk,
+  lunarToday,
+  lunarDiffNote,
+  morningLunarLine,
+  mungRamNote,
+  vnHolidayReply,
   morningGreeting,
   birthdayLine,
   morningOn,

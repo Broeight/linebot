@@ -26,6 +26,8 @@ const medicalCard = require('./services/medicalCard');
 const rateAlert = require('./services/rateAlert');
 const groupTranslate = require('./services/groupTranslate');
 const store = require('./store');
+const lunarSvc = require('./services/lunar');
+const vnHoliday = require('./services/vnHoliday');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
 
@@ -325,6 +327,28 @@ async function handleText(userId, text) {
   }
   if (/^thoi tiet$/.test(asciiTrimmed)) {
     return lang.weatherAsk(await lang.resolve(userId));
+  }
+
+  // ── 農曆日期查詢（F1）───────────────────────────────────
+  // zh：農曆 / 今天農曆 / 農曆日期；vi：âm lịch / hôm nay âm lịch / âm lịch hôm nay
+  if (/^(?:今天)?農曆(?:日期)?$/.test(trimmed) ||
+      /^(?:hom nay )?am lich(?: hom nay)?$/.test(asciiTrimmed)) {
+    const code = await lang.resolve(userId);
+    const today = store.taipei().date;
+    const tw = lunarSvc.lunarFromYmd(today, lunarSvc.TZ_TW);
+    const vn = lunarSvc.lunarFromYmd(today, lunarSvc.TZ_VN);
+    const differs = tw.day !== vn.day || tw.month !== vn.month || tw.leap !== vn.leap;
+    return lang.lunarToday(code, { today, tw, vn, differs, fmt: lunarSvc.lunarDateText });
+  }
+
+  // ── 越南節日＋Tết 倒數（F2）─────────────────────────────
+  // zh：越南節日 / 越南假日；vi：lễ Việt Nam（→ 'le viet nam'）；Tết（→ 'tet'，⚠️ 全訊息精準比對）
+  if (/^(?:越南節日|越南假日)$/.test(trimmed) ||
+      /^le viet nam$/.test(asciiTrimmed) ||
+      /^tet$/.test(asciiTrimmed)) {
+    const code = await lang.resolve(userId);
+    const today = store.taipei().date;
+    return lang.vnHolidayReply(code, vnHoliday.nextVnHoliday(today), vnHoliday.tetCountdown(today));
   }
 
   // ── 發票對獎 ─────────────────────────────────────────
