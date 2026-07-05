@@ -2,12 +2,12 @@
 # 一次性工具腳本，不進 runtime。執行方式（開發機一次）：
 #   powershell -ExecutionPolicy Bypass -File scripts/generate-richmenu-images.ps1
 #
-# 規格見 docs/loop/vi-rich-menu/DESIGN.md §3.2：
+# v2（8 格）規格見 docs/loop/richmenu-v2/PRD.md F3、docs/loop/vi-rich-menu/DESIGN.md §3.2：
 # - 畫布 2500x1686，背景 #F5F6FA
-# - 六格版位＝點擊區格線：colX=(0,833,1666) colW=(833,833,834) rowY=(0,843) rowH=(843,843)
+# - 八格版位＝點擊區格線（4 欄 x 2 列）：colX=(0,625,1250,1875) colW=(625,625,625,625) rowY=(0,843) rowH=(843,843)
 # - 每格內縮 24px 畫圓角矩形（圓角半徑 40）當色塊；文字置中
-# - 色盤（依格序 1-6）：#2F6FED #12B76A #F79009 #9E77ED #F04438 #475467
-# - 字：白色粗體 120px；zh 用 Microsoft JhengHei，vi 用 Segoe UI；不放 emoji
+# - 色盤延伸至 8 色（依格序 1-8，兩套選單同色序）
+# - 字：白色粗體，起始 120px，自動縮字（見 Get-FitFontSize）；zh 用 Microsoft JhengHei，vi 用 Segoe UI
 
 Add-Type -AssemblyName System.Drawing
 
@@ -19,18 +19,21 @@ if (-not (Test-Path $outDir)) {
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 }
 
-$colX = @(0, 833, 1666)
-$colW = @(833, 833, 834)
+# 4 欄 x 2 列
+$colX = @(0, 625, 1250, 1875)
+$colW = @(625, 625, 625, 625)
 $rowY = @(0, 843)
 $rowH = @(843, 843)
 
 $colors = @(
-    [System.Drawing.Color]::FromArgb(0x2F, 0x6F, 0xED),
-    [System.Drawing.Color]::FromArgb(0x12, 0xB7, 0x6A),
-    [System.Drawing.Color]::FromArgb(0xF7, 0x90, 0x09),
-    [System.Drawing.Color]::FromArgb(0x9E, 0x77, 0xED),
-    [System.Drawing.Color]::FromArgb(0xF0, 0x44, 0x38),
-    [System.Drawing.Color]::FromArgb(0x47, 0x54, 0x67)
+    [System.Drawing.Color]::FromArgb(0x2F, 0x6F, 0xED), # 藍
+    [System.Drawing.Color]::FromArgb(0x12, 0xB7, 0x6A), # 綠
+    [System.Drawing.Color]::FromArgb(0xF7, 0x90, 0x09), # 橘
+    [System.Drawing.Color]::FromArgb(0x9E, 0x77, 0xED), # 紫
+    [System.Drawing.Color]::FromArgb(0xF0, 0x44, 0x38), # 紅
+    [System.Drawing.Color]::FromArgb(0x47, 0x54, 0x67), # 灰藍
+    [System.Drawing.Color]::FromArgb(0x06, 0xAE, 0xD4), # 青
+    [System.Drawing.Color]::FromArgb(0xE0, 0x4F, 0x9A)  # 桃紅
 )
 
 # 圓角矩形路徑
@@ -48,11 +51,35 @@ function New-RoundedRectPath {
     return $path
 }
 
+# 自動縮字：起始 110px，量寬超出格寬 90% 就逐步縮小（step 6px），下限 56px
+function Get-FitFont {
+    param(
+        [System.Drawing.Graphics]$Graphics,
+        [string]$FontFamily,
+        [string]$Text,
+        [float]$MaxWidth
+    )
+    $size = 110
+    $minSize = 56
+    $step = 6
+    $font = New-Object System.Drawing.Font($FontFamily, $size, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    while ($size -gt $minSize) {
+        $measured = $Graphics.MeasureString($Text, $font)
+        if ($measured.Width -le ($MaxWidth * 0.9)) {
+            break
+        }
+        $font.Dispose()
+        $size -= $step
+        $font = New-Object System.Drawing.Font($FontFamily, $size, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    }
+    return $font
+}
+
 function New-RichMenuImage {
     param(
         [string]$OutPath,
         [string]$FontFamily,
-        [string[]]$Labels # 6 個標籤，依格序 1-6（左上→右上→...→右下，逐列）
+        [string[]]$Labels # 8 個標籤，依格序 1-8（左上→...→右上，逐列）
     )
 
     $bmp = New-Object System.Drawing.Bitmap(2500, 1686)
@@ -63,7 +90,6 @@ function New-RichMenuImage {
     $bg = [System.Drawing.Color]::FromArgb(0xF5, 0xF6, 0xFA)
     $g.Clear($bg)
 
-    $font = New-Object System.Drawing.Font($FontFamily, 120, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
     $whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
     $sf = New-Object System.Drawing.StringFormat
     $sf.Alignment = [System.Drawing.StringAlignment]::Center
@@ -74,7 +100,7 @@ function New-RichMenuImage {
 
     $idx = 0
     for ($row = 0; $row -lt 2; $row++) {
-        for ($col = 0; $col -lt 3; $col++) {
+        for ($col = 0; $col -lt 4; $col++) {
             $x = $colX[$col] + $inset
             $y = $rowY[$row] + $inset
             $w = $colW[$col] - (2 * $inset)
@@ -87,7 +113,9 @@ function New-RichMenuImage {
             $path.Dispose()
 
             $rect = New-Object System.Drawing.RectangleF($x, $y, $w, $h)
+            $font = Get-FitFont -Graphics $g -FontFamily $FontFamily -Text $Labels[$idx] -MaxWidth $w
             $g.DrawString($Labels[$idx], $font, $whiteBrush, $rect, $sf)
+            $font.Dispose()
 
             $idx++
         }
@@ -97,13 +125,12 @@ function New-RichMenuImage {
 
     $g.Dispose()
     $bmp.Dispose()
-    $font.Dispose()
     $whiteBrush.Dispose()
     $sf.Dispose()
 }
 
-$zhLabels = @('台鐵查詢', '加油站', '油價', '今天吃什麼', '天氣', '選單')
-$viLabels = @('Giờ tàu', 'Trạm xăng', 'Tỷ giá', 'Giá xăng', 'Thời tiết', 'Trợ giúp')
+$zhLabels = @('台鐵查詢', '加油站', '油價', '天氣', '今天吃什麼', '就醫卡', '農曆', '選單')
+$viLabels = @('Giờ tàu', 'Trạm xăng', 'Tỷ giá', 'Giá xăng', 'Thời tiết', 'Thẻ khám bệnh', 'Tết', 'Trợ giúp')
 
 $zhOut = Join-Path $outDir 'menu-zh.png'
 $viOut = Join-Path $outDir 'menu-vi.png'
