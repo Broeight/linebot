@@ -203,16 +203,19 @@ const HELP_MENU = {
     '☀️ 早安推播：「開啟早安 台北市」｜關閉：「關閉早安」\n' +
     '🎂 生日：「生日 媽媽 8/15」｜清單：「生日清單」\n' +
     '🩺 健康：「血壓 120 80」「血糖 95」｜查看：「血壓記錄」\n' +
+    '🏥 就醫卡：「就醫卡 頭痛兩天發燒」→ 產生給醫護看的中文卡\n' +
     '💧 喝水提醒：「開啟喝水提醒」\n' +
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
     '🗣 每日中文小老師：「開啟學中文」｜關閉：「關閉學中文」｜看今天：「今天的中文」\n' +
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
+    '🔔 匯率到價提醒：「匯率提醒 850」→ 台幣兌越南盾到價時通知你\n' +
     '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
     '🈷️ 農曆：「農曆」｜越南節日/Tết 倒數：「越南節日」\n' +
     '⛽ 油價：「油價」「95油價」「柴油油價」\n' +
     '⛽ 加油站：「加油站」→ 分享位置找最近的\n' +
     '🚆 台鐵：「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
     '🌐 翻譯：「翻譯 越南語 你吃飯了嗎」\n' +
+    '👨‍👩‍👧 群組翻譯：把我加進家庭群組 → 自動中↔越即時互譯\n' +
     '🧾 發票對獎：「對獎 12345678」\n' +
     '🍳 吃什麼：「今天吃什麼」｜食譜：「食譜 番茄炒蛋」\n' +
     '🌍 切換語言：「語言 越南語」（每人可各自設定）\n' +
@@ -229,16 +232,19 @@ const HELP_MENU = {
     '☀️ Bản tin buổi sáng: bật 「開啟早安 台北市」｜tắt: 「關閉早安」\n' +
     '🎂 Sinh nhật: 「生日 媽媽 8/15」｜Danh sách: 「生日清單」\n' +
     '🩺 Sức khoẻ: 「血壓 120 80」「血糖 95」｜Xem lại: 「血壓記錄」\n' +
+    '🏥 Thẻ khám bệnh: 「khám bệnh đau đầu 2 ngày sốt」→ tạo thẻ tiếng Trung đưa cho bác sĩ\n' +
     '💧 Nhắc uống nước: 「開啟喝水提醒」\n' +
     '💰 Ghi chi tiêu: 「記帳 午餐 120」｜Xem báo cáo: 「本月花費」\n' +
     '🗣 Học tiếng Trung mỗi ngày: bật 「開啟學中文」｜tắt: 「關閉學中文」｜xem hôm nay: 「今天的中文」\n' +
     '💱 Tỷ giá: gõ 「tỷ giá」(mặc định TWD→VND) hoặc 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
+    '🔔 Báo tỷ giá: 「báo tỷ giá 850」→ báo khi 1 TWD đạt mức VND bạn đặt\n' +
     '📅 Ngày nghỉ: 「今天放假嗎」「下一個連假」「7月假日」\n' +
     '🈷️ Âm lịch: gõ 「âm lịch」｜Ngày lễ VN & đếm ngược Tết: 「Tết」hoặc「lễ Việt Nam」\n' +
     '⛽ Giá xăng dầu: gõ 「giá xăng」hoặc「油價」「95油價」「柴油油價」\n' +
     '⛽ Trạm xăng gần nhất: 「加油站」→ chia sẻ vị trí để tìm trạm gần nhất\n' +
     '🚆 Tàu hoả (Đài Loan): 「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
     '🌐 Dịch thuật: 「翻譯 越南語 你吃飯了嗎」\n' +
+    '👨‍👩‍👧 Dịch trong nhóm: thêm mình vào nhóm gia đình → tự động dịch Trung↔Việt\n' +
     '🧾 Đối chiếu hoá đơn trúng thưởng: 「對獎 12345678」\n' +
     '🍳 Hôm nay ăn gì: 「今天吃什麼」｜Công thức nấu ăn: 「食譜 番茄炒蛋」\n' +
     '🌍 Đổi ngôn ngữ: 「語言 越南語」(mỗi người có thể đặt riêng)\n' +
@@ -254,16 +260,19 @@ const HELP_MENU = {
     '☀️ Morning digest: on 「開啟早安 台北市」｜off: 「關閉早安」\n' +
     '🎂 Birthdays: 「生日 媽媽 8/15」｜List: 「生日清單」\n' +
     '🩺 Health log: 「血壓 120 80」「血糖 95」｜History: 「血壓記錄」\n' +
+    '🏥 Medical card: 「就醫卡 headache and fever」or「khám bệnh ...」→ a Chinese card to show medical staff\n' +
     '💧 Water reminder: 「開啟喝水提醒」\n' +
     '💰 Expenses: 「記帳 午餐 120」｜Summary: 「本月花費」\n' +
     '🗣 Daily Chinese lesson: on 「開啟學中文」｜off: 「關閉學中文」｜today\'s: 「今天的中文」\n' +
     '💱 Exchange rate: 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
+    '🔔 Rate alert: 「匯率提醒 850」→ notify when 1 TWD reaches your VND target\n' +
     '📅 Holidays: 「今天放假嗎」「下一個連假」「7月假日」\n' +
     '🈷️ Lunar date: 「農曆」or「âm lịch」｜VN holidays & Tet countdown: 「Tết」\n' +
     '⛽ Fuel price: 「油價」「95油價」「柴油油價」\n' +
     '⛽ Nearest gas station: 「加油站」→ share your location\n' +
     '🚆 Taiwan Railway: 「台鐵 台北 台中」「下一班 台北到花蓮」\n' +
     '🌐 Translate: 「翻譯 越南語 你吃飯了嗎」\n' +
+    '👨‍👩‍👧 Group translation: add me to a family group → auto Chinese↔Vietnamese\n' +
     '🧾 Invoice check: 「對獎 12345678」\n' +
     '🍳 What to eat: 「今天吃什麼」｜Recipe: 「食譜 番茄炒蛋」\n' +
     '🌍 Change language: 「語言 越南語」(each person can set their own)\n' +
