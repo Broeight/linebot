@@ -28,6 +28,8 @@ const groupTranslate = require('./services/groupTranslate');
 const store = require('./store');
 const lunarSvc = require('./services/lunar');
 const vnHoliday = require('./services/vnHoliday');
+const imagePending = require('./services/imagePending');
+const tutor = require('./services/tutor');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
 
@@ -74,6 +76,21 @@ function locationQuickReply(code) {
         action: { type: 'location', label: lang.shareLocationLabel(code).slice(0, 20) },
       },
     ],
+  };
+}
+
+/**
+ * 把「按鈕文字＝真實指令」的動作按鈕組成 LINE Quick Reply 物件（label 可與 text 不同，
+ * 例如 emoji 前綴的簡短 label 對應完整指令文字；buildQuickReply 強制 label===text 不能重用）。
+ * @param {Array<{label:string, text:string}>} items
+ * @returns {{items: Array}}
+ */
+function actionQuickReply(items) {
+  return {
+    items: items.map((i) => ({
+      type: 'action',
+      action: { type: 'message', label: i.label.slice(0, 20), text: i.text },
+    })),
   };
 }
 
@@ -128,6 +145,30 @@ async function handleText(userId, text) {
       traChoice.clear(userId);
       const code = await lang.resolve(userId);
       return traTrain.getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day, code });
+    }
+  }
+
+  // ── 拍照收據記帳／文件提醒 pending 攔截（在基本指令之前）───────────
+  // 按鈕文字＝真實指令：命中才處理，一次性（防連點）；不命中就 fallthrough 到下方
+  // 既有文字路由（記帳/提醒我），過期或連點第二下都能成功執行。
+  const act = imagePending.consumeMatch(userId, trimmed);
+  if (act) {
+    const code = await lang.resolve(userId);
+    if (act.kind === 'expense-confirm') {
+      const { id, total } = expense.addWithId(userId, act.item, act.amount);
+      imagePending.set(userId, { kind: 'expense-undo', id, item: act.item, amount: act.amount, tapText: '撤銷記帳' });
+      return {
+        text: lang.expenseAdded(code, act.item, act.amount, total),
+        quickReply: actionQuickReply([{ label: lang.undoLabel(code), text: '撤銷記帳' }]),
+      };
+    }
+    if (act.kind === 'expense-undo') {
+      const r = expense.removeById(userId, act.id);
+      return r ? lang.expenseUndone(code, r.item, r.amount, r.total) : lang.expenseUndoNone(code);
+    }
+    if (act.kind === 'reminder-offer') {
+      const r = reminder.addParsed(userId, { type: 'once', datetime: act.datetime, message: act.message });
+      return r.ok ? lang.docReminderSet(code, r.when, act.message) : lang.docReminderFail(code);
     }
   }
 
@@ -380,6 +421,19 @@ async function handleText(userId, text) {
   if (/^bat (?:ban )?tin sang$/.test(asciiTrimmed)) return morning.subscribe(userId, '', await lang.resolve(userId));
   if (/^tat (?:ban )?tin sang$/.test(asciiTrimmed)) return morning.unsubscribe(userId, await lang.resolve(userId));
 
+  // ── 每日中文小老師 ───────────────────────────────────
+  if (trimmed === '開啟學中文' || /^hoc tieng trung$/.test(asciiTrimmed)) {
+    return tutor.subscribe(userId, await lang.resolve(userId));
+  }
+  if (trimmed === '關閉學中文' || /^tat hoc tieng trung$/.test(asciiTrimmed)) {
+    return tutor.unsubscribe(userId, await lang.resolve(userId));
+  }
+  if (trimmed === '今天的中文' || /^hoc hom nay$/.test(asciiTrimmed)) {
+    const code = await lang.resolve(userId);
+    const text = await tutor.lessonText(code);
+    return text || lang.tutorFail(code);
+  }
+
   // ── 健康記錄 ─────────────────────────────────────────
   if (trimmed === '血壓記錄') return health.history(userId, 'bp');
   if (trimmed === '血糖記錄') return health.history(userId, 'glucose');
@@ -392,6 +446,13 @@ async function handleText(userId, text) {
   if (trimmed === '記帳查詢' || trimmed === '本月花費') return expense.summary(userId);
   const exp = trimmed.match(/^記帳\s+(.+)$/);
   if (exp) return expense.add(userId, exp[1]);
+
+  // ── 撤銷記帳（拍照確認記帳的過期後備；只撤 10 分鐘內自己最新一筆）────
+  if (trimmed === '撤銷記帳' || /^hoan tac$/.test(asciiTrimmed)) {
+    const code = await lang.resolve(userId);
+    const r = expense.removeLast(userId);
+    return r ? lang.expenseUndone(code, r.item, r.amount, r.total) : lang.expenseUndoNone(code);
+  }
 
   // ── 喝水提醒 ─────────────────────────────────────────
   if (trimmed === '開啟喝水提醒') {
@@ -467,7 +528,11 @@ async function handleAudio(userId, messageId) {
   return prefix + (typeof answer === 'string' ? answer : (answer && answer.text) || '');
 }
 
-/** 處理圖片訊息：辨識內容 / 讀字 / 翻譯。 */
+/**
+ * 處理圖片訊息：辨識內容 / 讀字 / 翻譯；文件類附設提醒按鈕、收據類附記帳確認按鈕。
+ * 單次 vision 呼叫完成描述＋分類＋抽取（enriched prompt＋結尾 ##TAG 機器標籤）；
+ * 標籤解析失敗/缺漏一律當一般照片，與現行行為逐字相同，絕不報錯、標籤絕不外漏。
+ */
 async function handleImage(userId, messageId) {
   let buf;
   try {
@@ -477,11 +542,38 @@ async function handleImage(userId, messageId) {
     return lang.imageFetchFail(await lang.resolve(userId));
   }
   const code = await lang.resolve(userId);
-  const desc = await ai.vision(buf, 'image/jpeg', lang.visionPrompt(code));
-  if (!desc) return lang.imageUnclear(code);
-  // 把圖片描述存進對話記憶，讓使用者能接著針對這張圖追問（例如「這藥的作用？」）
+  const raw = await ai.vision(buf, 'image/jpeg', lang.visionPrompt(code));
+  if (!raw) return lang.imageUnclear(code);
+
+  const { text: desc, tag } = imagePending.parseVisionTag(raw);
+  // 把「剝除 ##TAG 後」的描述存進對話記憶，讓使用者能接著針對這張圖追問；
+  // 隱私：文件內容只進 RAM 對話記憶，##TAG 不進記憶不落地。
   conversation.append(userId, 'user', '（我傳了一張圖片給你看）');
   conversation.append(userId, 'assistant', desc);
+
+  if (tag.type === 'receipt' && tag.amount) {
+    const item = imagePending.sanitizeItem(tag.store);
+    const tapText = imagePending.buildExpenseTapText(item, tag.amount);
+    imagePending.set(userId, { kind: 'expense-confirm', item, amount: tag.amount, tapText });
+    return {
+      text: desc + '\n\n' + lang.receiptConfirmPrompt(code, item, tag.amount),
+      quickReply: actionQuickReply([{ label: lang.receiptConfirmLabel(code, tag.amount), text: tapText }]),
+    };
+  }
+
+  if (tag.type === 'document' && tag.deadline) {
+    const remindAt = imagePending.computeRemindAt(tag.deadline);
+    if (remindAt) {
+      const title = tag.title || lang.docDefaultTitle(code);
+      const tapText = imagePending.buildReminderTapText(remindAt, title);
+      imagePending.set(userId, { kind: 'reminder-offer', datetime: remindAt, message: title, tapText });
+      return {
+        text: desc,
+        quickReply: actionQuickReply([{ label: lang.docReminderLabel(code), text: tapText }]),
+      };
+    }
+  }
+
   return desc;
 }
 

@@ -34,6 +34,53 @@ function addItem(userId, item, amount) {
     .reduce((s, e) => s + e.amount, 0);
 }
 
+// 拍照記帳確認用：以結構化資料記一筆並附 id（供之後撤銷），回 { id, total }。
+function addWithId(userId, item, amount) {
+  const t = store.taipei();
+  const list = store.load(FILE);
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  list.push({ id, userId, item: item || '其他', amount: Number(amount) || 0, ym: t.ym, date: t.date, at: Date.now() });
+  store.save(FILE, list);
+  const total = list
+    .filter((e) => e.userId === userId && e.ym === t.ym)
+    .reduce((s, e) => s + e.amount, 0);
+  return { id, total };
+}
+
+// 依 id 移除一筆記帳（找不到回 null），回 { item, amount, total }（total 為移除後的本月累計）。
+function removeById(userId, id) {
+  const list = store.load(FILE);
+  const idx = list.findIndex((e) => e.userId === userId && e.id === id);
+  if (idx === -1) return null;
+  const [removed] = list.splice(idx, 1);
+  store.save(FILE, list);
+  const t = store.taipei();
+  const total = list
+    .filter((e) => e.userId === userId && e.ym === t.ym)
+    .reduce((s, e) => s + e.amount, 0);
+  return { item: removed.item, amount: removed.amount, total };
+}
+
+// 撤銷該使用者「最新一筆」記帳，僅限 maxAgeMs 內（預設 10 分鐘），否則回 null。
+function removeLast(userId, maxAgeMs = 10 * 60 * 1000) {
+  const list = store.load(FILE);
+  let lastIdx = -1;
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].userId === userId) { lastIdx = i; break; }
+  }
+  if (lastIdx === -1) return null;
+  const row = list[lastIdx];
+  const at = row.at || 0;
+  if (Date.now() - at > maxAgeMs) return null;
+  list.splice(lastIdx, 1);
+  store.save(FILE, list);
+  const t = store.taipei();
+  const total = list
+    .filter((e) => e.userId === userId && e.ym === t.ym)
+    .reduce((s, e) => s + e.amount, 0);
+  return { item: row.item, amount: row.amount, total };
+}
+
 function summary(userId) {
   const t = store.taipei();
   const items = store.load(FILE).filter((e) => e.userId === userId && e.ym === t.ym);
@@ -46,4 +93,4 @@ function summary(userId) {
   );
 }
 
-module.exports = { add, addItem, summary };
+module.exports = { add, addItem, summary, addWithId, removeById, removeLast };

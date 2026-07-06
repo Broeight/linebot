@@ -196,7 +196,7 @@ const HELP_MENU = {
     '👋 你好！我可以幫你：\n\n' +
     '💬 直接聊天、問問題\n' +
     '🎙 傳語音 → 我幫你聽打、回答\n' +
-    '📷 傳照片 → 辨識／讀字／翻譯\n' +
+    '📷 傳照片 → 辨識／讀字／翻譯（拍帳單/公文會自動整理重點；拍收據會問要不要記帳）\n' +
     '🌤 天氣：「天氣 台北市」\n' +
     '⏰ 提醒：「提醒我 明天9點 回診」「提醒 每天8點 吃藥」\n' +
     '　　　 看提醒：「提醒清單」｜刪除：「清除提醒」\n' +
@@ -205,6 +205,7 @@ const HELP_MENU = {
     '🩺 健康：「血壓 120 80」「血糖 95」｜查看：「血壓記錄」\n' +
     '💧 喝水提醒：「開啟喝水提醒」\n' +
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
+    '🗣 每日中文小老師：「開啟學中文」｜關閉：「關閉學中文」｜看今天：「今天的中文」\n' +
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
     '🈷️ 農曆：「農曆」｜越南節日/Tết 倒數：「越南節日」\n' +
@@ -221,7 +222,7 @@ const HELP_MENU = {
     '💡 Bạn có thể nói chuyện với tôi bằng tiếng Việt (nhắn chữ hoặc gửi tin nhắn thoại).\n\n' +
     '💬 Trò chuyện, hỏi đáp trực tiếp\n' +
     '🎙 Gửi tin nhắn thoại → mình nghe và trả lời giúp bạn\n' +
-    '📷 Gửi ảnh → nhận diện／đọc chữ／dịch\n' +
+    '📷 Gửi ảnh → nhận diện／đọc chữ／dịch (gửi ảnh hoá đơn/giấy tờ sẽ tự tóm tắt hoặc hỏi ghi chi tiêu)\n' +
     '🌤 Thời tiết: gõ 「天氣 台北市」(Thời tiết + tên thành phố)\n' +
     '⏰ Nhắc nhở: 「提醒我 明天9點 回診」「提醒 每天8點 吃藥」\n' +
     '　　　 Xem nhắc nhở: 「提醒清單」｜Xoá: 「清除提醒」\n' +
@@ -230,6 +231,7 @@ const HELP_MENU = {
     '🩺 Sức khoẻ: 「血壓 120 80」「血糖 95」｜Xem lại: 「血壓記錄」\n' +
     '💧 Nhắc uống nước: 「開啟喝水提醒」\n' +
     '💰 Ghi chi tiêu: 「記帳 午餐 120」｜Xem báo cáo: 「本月花費」\n' +
+    '🗣 Học tiếng Trung mỗi ngày: bật 「開啟學中文」｜tắt: 「關閉學中文」｜xem hôm nay: 「今天的中文」\n' +
     '💱 Tỷ giá: gõ 「tỷ giá」(mặc định TWD→VND) hoặc 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 Ngày nghỉ: 「今天放假嗎」「下一個連假」「7月假日」\n' +
     '🈷️ Âm lịch: gõ 「âm lịch」｜Ngày lễ VN & đếm ngược Tết: 「Tết」hoặc「lễ Việt Nam」\n' +
@@ -245,7 +247,7 @@ const HELP_MENU = {
     "👋 Hi! Here's what I can help with:\n\n" +
     '💬 Just chat or ask me anything\n' +
     '🎙 Send a voice message → I\'ll transcribe and reply\n' +
-    '📷 Send a photo → recognition／read text／translate\n' +
+    '📷 Send a photo → recognition／read text／translate (bills/documents get auto-summarized; receipts offer to log the expense)\n' +
     '🌤 Weather: type 「天氣 台北市」(weather + city name)\n' +
     '⏰ Reminders: 「提醒我 明天9點 回診」「提醒 每天8點 吃藥」\n' +
     '　　　 List: 「提醒清單」｜Clear: 「清除提醒」\n' +
@@ -254,6 +256,7 @@ const HELP_MENU = {
     '🩺 Health log: 「血壓 120 80」「血糖 95」｜History: 「血壓記錄」\n' +
     '💧 Water reminder: 「開啟喝水提醒」\n' +
     '💰 Expenses: 「記帳 午餐 120」｜Summary: 「本月花費」\n' +
+    '🗣 Daily Chinese lesson: on 「開啟學中文」｜off: 「關閉學中文」｜today\'s: 「今天的中文」\n' +
     '💱 Exchange rate: 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '📅 Holidays: 「今天放假嗎」「下一個連假」「7月假日」\n' +
     '🈷️ Lunar date: 「農曆」or「âm lịch」｜VN holidays & Tet countdown: 「Tết」\n' +
@@ -339,6 +342,106 @@ const MEDICAL_FAIL = {
   vi: 'Tạm thời không tạo được thẻ khám bệnh, vui lòng thử lại sau 🙏',
   en: 'Cannot make the medical card right now, please try again later 🙏',
 };
+// ── 拍照收據記帳／文件助手（imagePending）─────────────────────────────
+// 收據確認提示句（{item}/{amount} 由呼叫端代入）
+const RECEIPT_CONFIRM_PROMPT = {
+  'zh-TW': '🧾 這看起來是一張收據：{item} {amount} 元。\n要記到家庭帳本嗎？點下方按鈕 👇',
+  vi: '🧾 Đây có vẻ là một hoá đơn: {item} {amount} Đài tệ.\nBạn muốn ghi vào sổ chi tiêu gia đình không? Bấm nút bên dưới 👇',
+  en: '🧾 This looks like a receipt: {item} {amount} NTD.\nAdd it to the family expense book? Tap the button below 👇',
+};
+// 收據確認按鈕 label（≤20 字，LINE 硬限制；{amount} 由呼叫端代入）
+const RECEIPT_CONFIRM_LABEL = {
+  'zh-TW': '✅ 記帳 {amount}元',
+  vi: '✅ Ghi {amount}đ',
+  en: '✅ Add {amount}',
+};
+// 記帳成功（拍照確認後）：{item}/{amount}/{total} 由呼叫端代入
+const EXPENSE_ADDED = {
+  'zh-TW': '💰 已記帳：{item} {amount} 元\n本月累計：{total} 元',
+  vi: '💰 Đã ghi chi tiêu: {item} {amount} Đài tệ\nTổng tháng này: {total} Đài tệ',
+  en: '💰 Added: {item} {amount} NTD\nThis month\'s total: {total} NTD',
+};
+// 撤銷按鈕 label
+const UNDO_LABEL = {
+  'zh-TW': '↩️ 撤銷',
+  vi: '↩️ Hoàn tác',
+  en: '↩️ Undo',
+};
+// 撤銷成功：{item}/{amount}/{total} 由呼叫端代入
+const EXPENSE_UNDONE = {
+  'zh-TW': '↩️ 已撤銷：{item} {amount} 元\n本月累計：{total} 元',
+  vi: '↩️ Đã hoàn tác: {item} {amount} Đài tệ\nTổng tháng này: {total} Đài tệ',
+  en: '↩️ Undone: {item} {amount} NTD\nThis month\'s total: {total} NTD',
+};
+// 沒有可撤銷的記帳
+const EXPENSE_UNDO_NONE = {
+  'zh-TW': '目前沒有可撤銷的記帳。',
+  vi: 'Hiện không có khoản chi nào để hoàn tác.',
+  en: 'Nothing to undo right now.',
+};
+// 文件助手：設提醒按鈕 label
+const DOC_REMINDER_LABEL = {
+  'zh-TW': '⏰ 設提醒',
+  vi: '⏰ Đặt nhắc nhở',
+  en: '⏰ Set reminder',
+};
+// 文件助手：提醒設定成功（{when}/{msg} 由呼叫端代入）
+const DOC_REMINDER_SET = {
+  'zh-TW': '✅ 我會在 {when} 提醒你：「{msg}」',
+  vi: '✅ Mình sẽ nhắc bạn lúc {when}: "{msg}"',
+  en: '✅ I\'ll remind you at {when}: "{msg}"',
+};
+// 文件助手：提醒設定失敗
+const DOC_REMINDER_FAIL = {
+  'zh-TW': '抱歉，設定提醒失敗了，請稍後再試 🙏',
+  vi: 'Xin lỗi, đặt nhắc nhở không thành công, vui lòng thử lại sau 🙏',
+  en: 'Sorry, could not set the reminder. Please try again later 🙏',
+};
+// 文件助手：抽取失敗時的預設提醒標題
+const DOC_DEFAULT_TITLE = {
+  'zh-TW': '處理文件',
+  vi: 'Xử lý giấy tờ',
+  en: 'Handle document',
+};
+
+// ── 每日中文小老師（tutor）────────────────────────────────────────────
+// 訂閱開啟確認（{time} 由呼叫端代入）
+const TUTOR_ON = {
+  'zh-TW': '🗣 已開啟每日中文小老師（每天 {time} 推送）。\n關閉請輸入「關閉學中文」。',
+  vi: '🗣 Đã bật lớp học tiếng Trung hằng ngày (gửi lúc {time}).\nĐể tắt, gõ "tắt học tiếng Trung".',
+  en: '🗣 Daily Chinese lesson is ON (sent at {time}).\nTo turn off, type "關閉學中文" or "tắt học tiếng Trung".',
+};
+// 退訂確認
+const TUTOR_OFF = {
+  'zh-TW': '已關閉每日中文小老師。',
+  vi: 'Đã tắt lớp học tiếng Trung hằng ngày.',
+  en: 'Daily Chinese lesson turned off.',
+};
+// 退訂（原本就沒開）
+const TUTOR_OFF_NONE = {
+  'zh-TW': '你目前沒有開啟每日中文小老師。',
+  vi: 'Bạn chưa bật lớp học tiếng Trung hằng ngày.',
+  en: "You don't have the daily Chinese lesson turned on.",
+};
+// 生成失敗（今天的中文指令重試仍失敗）
+const TUTOR_FAIL = {
+  'zh-TW': '暫時沒辦法生成今天的中文課，請稍後再試 🙏',
+  vi: 'Tạm thời chưa tạo được bài học tiếng Trung hôm nay, vui lòng thử lại sau 🙏',
+  en: "Couldn't generate today's Chinese lesson right now, please try again later 🙏",
+};
+// 課程結尾提示句（想再看一次）
+const TUTOR_REPLAY_HINT = {
+  'zh-TW': '💡 想再看一次？輸入「今天的中文」／Muốn xem lại? Gõ "học hôm nay"',
+  vi: '💡 Muốn xem lại? Gõ "học hôm nay"／想再看一次？輸入「今天的中文」',
+  en: '💡 Want to see it again? Type "học hôm nay" / 「今天的中文」',
+};
+// 課程標題（{theme} 由呼叫端代入；zh 用中文主題名，vi 用越南語主題名）
+const TUTOR_TITLE = {
+  'zh-TW': '🗣 今天的中文課 — {themeZh}（{themeVi}）',
+  vi: '🗣 Bài học tiếng Trung hôm nay — {themeZh}（{themeVi}）',
+  en: "🗣 Today's Chinese lesson — {themeZh} ({themeVi})",
+};
+
 // 匯率到價提醒：設定確認（漲到通知，target >= current）
 const RATE_ALERT_SET_UP = {
   'zh-TW': '🔔 已設定：1 台幣 ≥ {target} 越南盾時通知你（現在 {current}）',
@@ -491,14 +594,33 @@ function optionsText() {
   );
 }
 
-// 給看圖工具用的提示語（指定回覆語言）
+// 給看圖工具用的提示語（指定回覆語言；單次 vision 呼叫完成描述＋分類＋抽取，
+// 結尾附機器可讀的 ##TAG，供 imagePending.parseVisionTag 解析——標籤跨語言穩定，
+// 只有 `Respond in ${target}` 隨語言變）
 function visionPrompt(code) {
   const target = (LANGS[code] && LANGS[code].ai) || 'Traditional Chinese';
   return (
-    'Look at this image and describe what it shows, concisely. ' +
-    'If there is text in the image, read it out; if the text is in a foreign language, also translate it. ' +
-    'If it looks like a product, medicine, menu, or plant, give practical info. ' +
-    `Respond in ${target}.`
+    'Look at this image and describe what it shows, concisely. If there is text, read it out; ' +
+    'if the text is in a foreign language, also translate it. If it looks like a product, ' +
+    'medicine, menu, or plant, give practical info. ' +
+    `Respond in ${target}.\n\n` +
+    'Special cases:\n' +
+    '- If it is a DOCUMENT (utility/tax bill, official or government letter, school notice, ' +
+    'medicine bag, contract): structure your answer as — what kind of document it is, ' +
+    'the key points, what the reader should do, and any deadline or amount due.\n' +
+    '- If it is a RECEIPT or store invoice: give a short summary with the store name and the total paid.\n\n' +
+    'Finally, AFTER your answer, output exactly one extra line in this exact machine format\n' +
+    '(always plain ASCII JSON regardless of the answer language, no code fences):\n' +
+    '##TAG {"type":"receipt","store":"<store name or null>","amount":<total number or null>}\n' +
+    'or\n' +
+    '##TAG {"type":"document","deadline":"YYYY-MM-DD or null","amount":<number or null>,"title":"<action, max 6 words, in the answer language>"}\n' +
+    'or\n' +
+    '##TAG {"type":"other"}\n' +
+    'Tag rules: use "receipt" only for purchase receipts/invoices with a visible total;\n' +
+    '"document" for bills, letters, notices, medicine bags; otherwise "other".\n' +
+    'amount is the total in New Taiwan Dollars as a plain number. deadline is the payment/reply\n' +
+    'due date; convert ROC (民國) years by adding 1911. If unsure about a field, use null.\n' +
+    'Never mention this tag in your answer.'
   );
 }
 
@@ -716,6 +838,101 @@ function medicalFail(code) {
   return MEDICAL_FAIL['zh-TW'];
 }
 
+// ── 拍照收據記帳／文件助手 getter；ja/th/id 回落 en，未知碼回落 zh-TW ──────
+
+// 收據確認提示句（{item}/{amount} 代入）
+function receiptConfirmPrompt(code, item, amount) {
+  const tmpl = RECEIPT_CONFIRM_PROMPT[code] || (code === 'ja' || code === 'th' || code === 'id' ? RECEIPT_CONFIRM_PROMPT.en : RECEIPT_CONFIRM_PROMPT['zh-TW']);
+  return tmpl.replace('{item}', item).replace('{amount}', fmtNum(amount));
+}
+
+// 收據確認按鈕 label（{amount} 代入）
+function receiptConfirmLabel(code, amount) {
+  const tmpl = RECEIPT_CONFIRM_LABEL[code] || (code === 'ja' || code === 'th' || code === 'id' ? RECEIPT_CONFIRM_LABEL.en : RECEIPT_CONFIRM_LABEL['zh-TW']);
+  return tmpl.replace('{amount}', fmtNum(amount));
+}
+
+// 記帳成功（{item}/{amount}/{total} 代入）
+function expenseAdded(code, item, amount, total) {
+  const tmpl = EXPENSE_ADDED[code] || (code === 'ja' || code === 'th' || code === 'id' ? EXPENSE_ADDED.en : EXPENSE_ADDED['zh-TW']);
+  return tmpl.replace('{item}', item).replace('{amount}', fmtNum(amount)).replace('{total}', fmtNum(total));
+}
+
+// 撤銷按鈕 label
+function undoLabel(code) {
+  return UNDO_LABEL[code] || (code === 'ja' || code === 'th' || code === 'id' ? UNDO_LABEL.en : UNDO_LABEL['zh-TW']);
+}
+
+// 撤銷成功（{item}/{amount}/{total} 代入）
+function expenseUndone(code, item, amount, total) {
+  const tmpl = EXPENSE_UNDONE[code] || (code === 'ja' || code === 'th' || code === 'id' ? EXPENSE_UNDONE.en : EXPENSE_UNDONE['zh-TW']);
+  return tmpl.replace('{item}', item).replace('{amount}', fmtNum(amount)).replace('{total}', fmtNum(total));
+}
+
+// 沒有可撤銷的記帳
+function expenseUndoNone(code) {
+  return EXPENSE_UNDO_NONE[code] || (code === 'ja' || code === 'th' || code === 'id' ? EXPENSE_UNDO_NONE.en : EXPENSE_UNDO_NONE['zh-TW']);
+}
+
+// 文件助手：設提醒按鈕 label
+function docReminderLabel(code) {
+  return DOC_REMINDER_LABEL[code] || (code === 'ja' || code === 'th' || code === 'id' ? DOC_REMINDER_LABEL.en : DOC_REMINDER_LABEL['zh-TW']);
+}
+
+// 文件助手：提醒設定成功（{when}/{msg} 代入）
+function docReminderSet(code, when, msg) {
+  const tmpl = DOC_REMINDER_SET[code] || (code === 'ja' || code === 'th' || code === 'id' ? DOC_REMINDER_SET.en : DOC_REMINDER_SET['zh-TW']);
+  return tmpl.replace('{when}', when).replace('{msg}', msg);
+}
+
+// 文件助手：提醒設定失敗
+function docReminderFail(code) {
+  return DOC_REMINDER_FAIL[code] || (code === 'ja' || code === 'th' || code === 'id' ? DOC_REMINDER_FAIL.en : DOC_REMINDER_FAIL['zh-TW']);
+}
+
+// 文件助手：抽取失敗時的預設提醒標題
+function docDefaultTitle(code) {
+  return DOC_DEFAULT_TITLE[code] || (code === 'ja' || code === 'th' || code === 'id' ? DOC_DEFAULT_TITLE.en : DOC_DEFAULT_TITLE['zh-TW']);
+}
+
+// ── 每日中文小老師 getter；ja/th/id 回落 en，未知碼回落 zh-TW ──────────
+
+// 訂閱開啟確認（{time} 代入）
+function tutorOn(code, time) {
+  const tmpl = TUTOR_ON[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_ON.en : TUTOR_ON['zh-TW']);
+  return tmpl.replace('{time}', time);
+}
+
+// 退訂確認
+function tutorOff(code) {
+  return TUTOR_OFF[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_OFF.en : TUTOR_OFF['zh-TW']);
+}
+
+// 退訂（原本就沒開）
+function tutorOffNone(code) {
+  return TUTOR_OFF_NONE[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_OFF_NONE.en : TUTOR_OFF_NONE['zh-TW']);
+}
+
+// 生成失敗
+function tutorFail(code) {
+  return TUTOR_FAIL[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_FAIL.en : TUTOR_FAIL['zh-TW']);
+}
+
+// 組裝今天的中文課全文（PRD「課程格式」）：{theme:{zh,vi}}, phrases:[{zh,pinyin,vi}] (恰 3 句)
+function tutorLesson(code, theme, phrases) {
+  const titleTmpl = TUTOR_TITLE[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_TITLE.en : TUTOR_TITLE['zh-TW']);
+  const title = titleTmpl.replace('{themeZh}', theme.zh).replace('{themeVi}', theme.vi);
+  const hint = TUTOR_REPLAY_HINT[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_REPLAY_HINT.en : TUTOR_REPLAY_HINT['zh-TW']);
+  const lines = [title];
+  phrases.forEach((p, i) => {
+    lines.push(`${i + 1}. ${p.zh}`);
+    lines.push(`🔤 ${p.pinyin}`);
+    lines.push(`🇻🇳 ${p.vi}`);
+  });
+  lines.push(hint);
+  return lines.join('\n');
+}
+
 // 數字格式化：整數就不顯示小數點，否則保留原值（沿用 exchangeRate 的簡單風格）
 function fmtNum(n) {
   const num = Number(n);
@@ -834,4 +1051,19 @@ module.exports = {
   rateAlertCurrent,
   rateAlertCleared,
   rateAlertFail,
+  receiptConfirmPrompt,
+  receiptConfirmLabel,
+  expenseAdded,
+  undoLabel,
+  expenseUndone,
+  expenseUndoNone,
+  docReminderLabel,
+  docReminderSet,
+  docReminderFail,
+  docDefaultTitle,
+  tutorOn,
+  tutorOff,
+  tutorOffNone,
+  tutorFail,
+  tutorLesson,
 };

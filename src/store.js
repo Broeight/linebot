@@ -13,7 +13,7 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const KNOWN_KEYS = [
   'reminders.json', 'lang.json', 'birthdays.json', 'morning.json',
   'morning-state.json', 'health.json', 'expense.json', 'rateAlert.json',
-  'groupTranslate.json',
+  'groupTranslate.json', 'tutor.json', 'tutor-state.json',
 ];
 
 const DEBOUNCE_MS = 2000;
