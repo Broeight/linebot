@@ -30,6 +30,7 @@ const lunarSvc = require('./services/lunar');
 const vnHoliday = require('./services/vnHoliday');
 const imagePending = require('./services/imagePending');
 const tutor = require('./services/tutor');
+const disasterAlert = require('./services/disasterAlert');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
 
@@ -432,6 +433,14 @@ async function handleText(userId, text) {
     const code = await lang.resolve(userId);
     const text = await tutor.lessonText(code);
     return text || lang.tutorFail(code);
+  }
+
+  // ── 防災警報推播 ──────────────────────────────────────────
+  if (trimmed === '開啟警報' || /^bat canh bao$/.test(asciiTrimmed)) {
+    return disasterAlert.subscribe(userId, await lang.resolve(userId));
+  }
+  if (trimmed === '關閉警報' || /^tat canh bao$/.test(asciiTrimmed)) {
+    return disasterAlert.unsubscribe(userId, await lang.resolve(userId));
   }
 
   // ── 健康記錄 ─────────────────────────────────────────
