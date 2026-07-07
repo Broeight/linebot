@@ -207,6 +207,7 @@ const HELP_MENU = {
     '💧 喝水提醒：「開啟喝水提醒」\n' +
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
     '🗣 每日中文小老師：「開啟學中文」｜關閉：「關閉學中文」｜看今天：「今天的中文」\n' +
+    '🌀 防災警報：「開啟警報」｜關閉：「關閉警報」（颱風/地震/豪雨即時通知）\n' +
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '🔔 匯率到價提醒：「匯率提醒 850」→ 台幣兌越南盾到價時通知你\n' +
     '📅 放假：「今天放假嗎」「下一個連假」「7月假日」\n' +
@@ -236,6 +237,7 @@ const HELP_MENU = {
     '💧 Nhắc uống nước: 「開啟喝水提醒」\n' +
     '💰 Ghi chi tiêu: 「記帳 午餐 120」｜Xem báo cáo: 「本月花費」\n' +
     '🗣 Học tiếng Trung mỗi ngày: bật 「開啟學中文」｜tắt: 「關閉學中文」｜xem hôm nay: 「今天的中文」\n' +
+    '🌀 Cảnh báo thiên tai: 「開啟警報」/「bật cảnh báo」｜tắt: 「關閉警報」/「tắt cảnh báo」\n' +
     '💱 Tỷ giá: gõ 「tỷ giá」(mặc định TWD→VND) hoặc 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '🔔 Báo tỷ giá: 「báo tỷ giá 850」→ báo khi 1 TWD đạt mức VND bạn đặt\n' +
     '📅 Ngày nghỉ: 「今天放假嗎」「下一個連假」「7月假日」\n' +
@@ -264,6 +266,7 @@ const HELP_MENU = {
     '💧 Water reminder: 「開啟喝水提醒」\n' +
     '💰 Expenses: 「記帳 午餐 120」｜Summary: 「本月花費」\n' +
     '🗣 Daily Chinese lesson: on 「開啟學中文」｜off: 「關閉學中文」｜today\'s: 「今天的中文」\n' +
+    '🌀 Disaster alerts: 「開啟警報」/「bật cảnh báo」｜off: 「關閉警報」\n' +
     '💱 Exchange rate: 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
     '🔔 Rate alert: 「匯率提醒 850」→ notify when 1 TWD reaches your VND target\n' +
     '📅 Holidays: 「今天放假嗎」「下一個連假」「7月假日」\n' +
@@ -449,6 +452,50 @@ const TUTOR_TITLE = {
   'zh-TW': '🗣 今天的中文課 — {themeZh}（{themeVi}）',
   vi: '🗣 Bài học tiếng Trung hôm nay — {themeZh}（{themeVi}）',
   en: "🗣 Today's Chinese lesson — {themeZh} ({themeVi})",
+};
+
+// ── 防災警報推播（disasterAlert）────────────────────────────────────────
+// 訂閱開啟確認
+const ALERT_ON = {
+  'zh-TW': '🌀 已開啟防災警報推播。有新的官方警報會即時通知你。\n關閉請輸入「關閉警報」。',
+  vi: '🌀 Đã bật cảnh báo thiên tai. Có cảnh báo chính thức mới sẽ báo cho bạn ngay.\nĐể tắt, gõ "tắt cảnh báo".',
+  en: '🌀 Disaster alert notifications are ON. You\'ll be notified as soon as a new official alert is issued.\nTo turn off, type "關閉警報" or "tắt cảnh báo".',
+};
+// 退訂確認
+const ALERT_OFF = {
+  'zh-TW': '已關閉防災警報推播。',
+  vi: 'Đã tắt cảnh báo thiên tai.',
+  en: 'Disaster alert notifications turned off.',
+};
+// 退訂（原本就沒開）
+const ALERT_OFF_NONE = {
+  'zh-TW': '你目前沒有開啟防災警報推播。',
+  vi: 'Bạn chưa bật cảnh báo thiên tai.',
+  en: "You don't have disaster alert notifications turned on.",
+};
+// 翻譯失敗前綴（推中文原文時加在最前面一行）
+const ALERT_TRANSLATE_FAIL = {
+  'zh-TW': '⚠️ （自動翻譯失敗，以下為原文）',
+  vi: '⚠️ (Dịch tự động thất bại, dưới đây là bản gốc tiếng Trung)',
+  en: '⚠️ (Automatic translation failed, original Chinese text below)',
+};
+// 類別顯示名（六語；查無用中文 category 原字）
+const ALERT_CATEGORY_LABEL = {
+  'zh-TW': {
+    '地震': '地震', '颱風': '颱風', '海嘯': '海嘯', '豪雨': '豪雨特報', '大雨': '大雨特報',
+    '降雨': '大雨特報', '淹水': '淹水警戒', '土石流': '土石流警戒', '雷雨': '大雷雨即時訊息',
+    '高溫': '高溫特報', '強風': '強風特報',
+  },
+  vi: {
+    '地震': 'Động đất', '颱風': 'Bão', '海嘯': 'Sóng thần', '豪雨': 'Mưa lớn', '大雨': 'Mưa lớn',
+    '降雨': 'Mưa lớn', '淹水': 'Cảnh báo ngập lụt', '土石流': 'Cảnh báo lở đất', '雷雨': 'Giông sét tức thời',
+    '高溫': 'Nắng nóng', '強風': 'Gió mạnh',
+  },
+  en: {
+    '地震': 'Earthquake', '颱風': 'Typhoon', '海嘯': 'Tsunami', '豪雨': 'Heavy Rain', '大雨': 'Heavy Rain',
+    '降雨': 'Heavy Rain', '淹水': 'Flood Warning', '土石流': 'Landslide Warning', '雷雨': 'Thunderstorm Alert',
+    '高溫': 'Extreme Heat', '強風': 'Strong Wind',
+  },
 };
 
 // 匯率到價提醒：設定確認（漲到通知，target >= current）
@@ -927,6 +974,56 @@ function tutorFail(code) {
   return TUTOR_FAIL[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_FAIL.en : TUTOR_FAIL['zh-TW']);
 }
 
+// ── 防災警報推播 getter；ja/th/id 回落 en，未知碼回落 zh-TW ─────────────
+
+// 訂閱開啟確認
+function alertOn(code) {
+  return ALERT_ON[code] || (code === 'ja' || code === 'th' || code === 'id' ? ALERT_ON.en : ALERT_ON['zh-TW']);
+}
+
+// 退訂確認
+function alertOff(code) {
+  return ALERT_OFF[code] || (code === 'ja' || code === 'th' || code === 'id' ? ALERT_OFF.en : ALERT_OFF['zh-TW']);
+}
+
+// 退訂（原本就沒開）
+function alertOffNone(code) {
+  return ALERT_OFF_NONE[code] || (code === 'ja' || code === 'th' || code === 'id' ? ALERT_OFF_NONE.en : ALERT_OFF_NONE['zh-TW']);
+}
+
+// 翻譯失敗前綴
+function alertTranslateFail(code) {
+  return ALERT_TRANSLATE_FAIL[code] || (code === 'ja' || code === 'th' || code === 'id' ? ALERT_TRANSLATE_FAIL.en : ALERT_TRANSLATE_FAIL['zh-TW']);
+}
+
+// 類別 emoji（查無用 ⚠️；單一真實來源，供 alertPush 組裝用）
+const ALERT_CATEGORY_EMOJI = {
+  '地震': '🌏', '颱風': '🌀', '海嘯': '🌊', '豪雨': '🌧', '大雨': '🌧', '降雨': '🌧',
+  '淹水': '🌊', '土石流': '⛰', '雷雨': '⛈', '高溫': '🌡', '強風': '💨',
+};
+
+/**
+ * 防災警報推播組裝器：類別 emoji＋在地化類別名稱＋內文（已是該語言譯文，或中文原文＋失敗前綴）
+ * ＋生效/失效時間＋發布機關。
+ * @param {string} code 語言碼
+ * @param {object} alert 正規化警報物件（disasterAlert.parseAlerts 的輸出）
+ * @param {string} body 已組裝好的內文（呼叫端已處理翻譯/失敗政策）
+ * @returns {string}
+ */
+function alertPush(code, alert, body) {
+  const emoji = ALERT_CATEGORY_EMOJI[alert.category] || '⚠️';
+  const labelTable = ALERT_CATEGORY_LABEL[code] || (code === 'ja' || code === 'th' || code === 'id' ? ALERT_CATEGORY_LABEL.en : ALERT_CATEGORY_LABEL['zh-TW']);
+  const label = labelTable[alert.category] || alert.category;
+  const lines = [`${emoji} ${label}`, body];
+  if (alert.effective || alert.expires) {
+    lines.push(`🕒 ${alert.effective || '?'} ~ ${alert.expires || '?'}`);
+  }
+  if (alert.agency) {
+    lines.push(`📢 ${alert.agency}`);
+  }
+  return lines.join('\n');
+}
+
 // 組裝今天的中文課全文（PRD「課程格式」）：{theme:{zh,vi}}, phrases:[{zh,pinyin,vi}] (恰 3 句)
 function tutorLesson(code, theme, phrases) {
   const titleTmpl = TUTOR_TITLE[code] || (code === 'ja' || code === 'th' || code === 'id' ? TUTOR_TITLE.en : TUTOR_TITLE['zh-TW']);
@@ -1075,4 +1172,9 @@ module.exports = {
   tutorOffNone,
   tutorFail,
   tutorLesson,
+  alertOn,
+  alertOff,
+  alertOffNone,
+  alertTranslateFail,
+  alertPush,
 };

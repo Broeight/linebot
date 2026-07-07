@@ -16,6 +16,9 @@ const config = {
   port: Number(process.env.PORT) || 3000,
   morningTime: process.env.MORNING_TIME || '07:00', // 每日早安推播時間（台北時間 HH:mm）
   tutorTime: process.env.TUTOR_TIME || '20:00', // 每日中文小老師推播時間（台北時間 HH:mm）
+  disasterAlertTickMs: Number(process.env.ALERT_TICK_MS) || 5 * 60 * 1000, // 選填：防災警報輪詢間隔（毫秒）
+  // 選填：CWA 開放資料授權碼（僅備援來源用；不設＝走 NCDR 免金鑰主來源，見 docs/loop/disaster-alert/DESIGN.md §1）
+  cwa: { token: process.env.CWA_TOKEN || '' },
   // 選填：Upstash Redis 雲端同步（兩個都設才啟用；不設＝僅本機檔案）
   upstash: {
     url: process.env.UPSTASH_REDIS_REST_URL || '',
