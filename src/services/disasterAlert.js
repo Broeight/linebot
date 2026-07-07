@@ -160,8 +160,11 @@ function parseAlerts(raw) {
     if (!severity) continue;
 
     // 過期的警報不推（截圖出現 3~4 天前、早已失效的舊警報）。
-    // 防禦性：只有在 expires 能明確解析且早於現在時才略過；解析不出或沒填就保留。
-    const expTs = Date.parse(e.expires);
+    // feed 時間是中文格式「2026/7/7 下午 03:59:00」→ 用 parseZhTime（同 pruneState），
+    // ISO 格式以 Date.parse 備援。防禦性：只有能明確解析且早於現在時才略過；
+    // 解析不出或沒填 expires 就保留（寧可多推、不可誤砍有效警報）。
+    let expTs = parseZhTime(e.expires);
+    if (Number.isNaN(expTs)) expTs = Date.parse(e.expires);
     if (!Number.isNaN(expTs) && expTs < Date.now()) continue;
 
     out.push({
