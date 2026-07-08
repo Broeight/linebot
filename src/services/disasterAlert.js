@@ -25,18 +25,15 @@ const LANG_NAME = {
 };
 
 // 類別白名單 → 內部 severity（DESIGN §3 過濾規則；雷雨預設關，實測最洗版）
+// 只推「需要立刻反應」且相對少見的警報，避免洗版。
+// 刻意排除夏天每小時重發的：大雨、降雨、淹水（水利署逐鄉鎮發、極頻繁）、
+// 高溫（每天發、實測一下午重發 5 次）、強風、雷雨——這些低急迫、高頻率，是洗版主因。
 const PUSH_CATEGORIES = {
   '地震': 'high',
   '颱風': 'high',
   '海嘯': 'high',
-  '豪雨': 'high',
-  '大雨': 'high',
-  '降雨': 'high',
-  '淹水': 'high',
+  '豪雨': 'high',   // 最高降雨等級（storm 級），保留
   '土石流': 'high',
-  '高溫': 'med',
-  '強風': 'med',
-  // '雷雨' 預設關（optIn，v1 不推；洗版來源，實測 27 筆／半天）
 };
 
 // 類別 emoji 對照（DESIGN §2.3；查無用 ⚠️）
@@ -161,6 +158,14 @@ function parseAlerts(raw) {
     if (msgType !== 'Alert') continue;
     const severity = PUSH_CATEGORIES[category];
     if (!severity) continue;
+
+    // 過期的警報不推（截圖出現 3~4 天前、早已失效的舊警報）。
+    // feed 時間是中文格式「2026/7/7 下午 03:59:00」→ 用 parseZhTime（同 pruneState），
+    // ISO 格式以 Date.parse 備援。防禦性：只有能明確解析且早於現在時才略過；
+    // 解析不出或沒填 expires 就保留（寧可多推、不可誤砍有效警報）。
+    let expTs = parseZhTime(e.expires);
+    if (Number.isNaN(expTs)) expTs = Date.parse(e.expires);
+    if (!Number.isNaN(expTs) && expTs < Date.now()) continue;
 
     out.push({
       id,
