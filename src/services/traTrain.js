@@ -93,6 +93,92 @@ function durationLocalized(code, dep, arr) {
   return `${h}h${m}m`; // en 與其餘語言回落 en 風格
 }
 
+// 依 code 取表值，未知語言回落 en（與既有 whenLabel/noTrainsText 回落規則一致）
+function pick(table, code) {
+  return table[code] || table.en;
+}
+
+// 列表標頭（列表模式：有班次／已無班次皆用）
+const HEADER_LIST = {
+  'zh-TW': '🚆 台鐵',
+  vi:      '🚆 Tàu hỏa (TRA)',
+  en:      '🚆 TRA',
+};
+
+// 下一班標頭（nextOnly 模式：有班次／已無班次皆用）
+const HEADER_NEXT = {
+  'zh-TW': '🚆 下一班',
+  vi:      '🚆 Chuyến kế tiếp',
+  en:      '🚆 Next train',
+};
+
+// 資料來源整行（zh-TW 反向引用 SOURCE 常數 → 逐字不變、SOURCE 零改動）
+const SOURCE_LINE = {
+  'zh-TW': `資料來源：${SOURCE}`,
+  vi:      'Nguồn: Đường sắt Đài Loan (TRA) qua MOTC PTX.',
+  en:      'Source: Taiwan Railway (TRA) via MOTC PTX.',
+};
+
+// 「之後的班次」整行；when 由 whenLabel(code, isTomorrow) 傳入、time = fromHm
+const AFTER_LINE = {
+  'zh-TW': (when, time) => `${when} ${time} 之後的班次：`,
+  vi:      (when, time) => `Các chuyến ${when} sau ${time}:`,
+  en:      (when, time) => `Trains ${when} after ${time}:`,
+};
+
+// nextOnly 有班次時的「發車/抵達」時間段
+const NEXT_SEG = {
+  'zh-TW': (dep, arr) => `${dep} 發車，${arr} 抵達`,
+  vi:      (dep, arr) => `khởi hành ${dep}, đến ${arr}`,
+  en:      (dep, arr) => `departs ${dep}, arrives ${arr}`,
+};
+
+// 車次計次詞
+const TRAIN_NO = {
+  'zh-TW': (no) => `${no}次`,
+  vi:      (no) => `No.${no}`,
+  en:      (no) => `No.${no}`,
+};
+
+// 車種對照（越南語）；[基準關鍵字, 越南語標籤]，順序即優先序（具體 → 一般）
+// 關鍵：「區間快」必須排在「區間」之前，否則「區間快」會被「區間」先命中
+const TRAIN_TYPE_VI = [
+  ['太魯閣', 'Tàu Taroko'],
+  ['普悠瑪', 'Tàu Puyuma'],
+  ['自強',   'Tàu Tự Cường'],
+  ['莒光',   'Tàu Chu-Kuang'],
+  ['復興',   'Tàu Phục Hưng'],
+  ['區間快', 'Tàu địa phương nhanh'],
+  ['區間',   'Tàu địa phương'],
+  ['普快',   'Tàu thường'],
+];
+
+/**
+ * 車種在地化：把 PTX typeZh（可能帶括注變體，如「自強(3000)」）正規化後查表，
+ * 依 code 決定基底語言，永不回傳空字串／undefined。
+ * @param {string} code   語言代碼
+ * @param {string} typeZh PTX 中文車種名
+ * @param {string} typeEn PTX 英文車種名
+ * @returns {string}
+ */
+function trainTypeLabel(code, typeZh, typeEn) {
+  if (code === 'zh-TW') return typeZh;
+
+  const s = String(typeZh || '').trim();
+  const base = s.split(/[(（]/)[0].trim();
+
+  if (code === 'vi') {
+    if (base) {
+      for (const [keyword, label] of TRAIN_TYPE_VI) {
+        if (base.includes(keyword)) return label;
+      }
+    }
+    return typeEn || typeZh;
+  }
+
+  return typeEn || typeZh;
+}
+
 // 把台北時間日期字串加一天，回傳 'YYYY-MM-DD'
 function addOneDay(dateStr) {
   const d = new Date(`${dateStr}T12:00:00+08:00`);
@@ -614,7 +700,6 @@ async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day,
   const date = isTomorrow ? addOneDay(t0.date) : t0.date;
   const fromHm = isTomorrow ? '00:00' : t0.hm; // 明天→整天班次；今天→現在之後
   const mmdd = `${date.slice(5, 7)}/${date.slice(8, 10)}`;
-  const whenZh = isTomorrow ? '明天' : '今天';
 
   let result;
   try {
@@ -632,37 +717,39 @@ async function getTraTrainByIds({ fromId, toId, fromName, toName, nextOnly, day,
 
   if (nextOnly) {
     if (trains.length === 0) {
-      return lc === 'zh-TW'
-        ? `🚆 下一班 ${fromName} → ${toName}\n${whenZh}已無班次`
-        : `🚆 下一班 ${fromName} → ${toName}\n${noTrainsText(lc, isTomorrow)}`;
+      // 情境 D：nextOnly 模式、已無班次 —— 標頭刻意不帶（mmdd），與其餘三種情境不對稱，維持既有行為
+      return `${pick(HEADER_NEXT, lc)} ${fromName} → ${toName}\n${noTrainsText(lc, isTomorrow)}`;
     }
+    // 情境 B：nextOnly 模式、有班次
     const t = trains[0];
-    const typeName0 = lc === 'zh-TW' ? t.typeZh : (t.typeEn || t.typeZh);
+    const typeName = trainTypeLabel(lc, t.typeZh, t.typeEn);
+    const noLabel = pick(TRAIN_NO, lc)(t.trainNo);
+    const dur = durationLocalized(lc, t.departure, t.arrival);
     return (
-      `🚆 下一班 ${fromName} → ${toName}（${mmdd}）\n` +
-      `・${t.trainNo}次 ${typeName0}　${t.departure} 發車，${t.arrival} 抵達（${durationLocalized(lc, t.departure, t.arrival)}）\n\n` +
-      `資料來源：${SOURCE}`
+      `${pick(HEADER_NEXT, lc)} ${fromName} → ${toName}（${mmdd}）\n` +
+      `・${noLabel} ${typeName}　${pick(NEXT_SEG, lc)(t.departure, t.arrival)}（${dur}）\n\n` +
+      pick(SOURCE_LINE, lc)
     );
   }
 
   if (trains.length === 0) {
-    return lc === 'zh-TW'
-      ? `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n${whenZh}已無班次`
-      : `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n${noTrainsText(lc, isTomorrow)}`;
+    // 情境 C：列表模式、已無班次
+    return `${pick(HEADER_LIST, lc)} ${fromName} → ${toName}（${mmdd}）\n${noTrainsText(lc, isTomorrow)}`;
   }
 
+  // 情境 A：列表模式、有班次
   const lines = trains.map((t) => {
-    const typeName = lc === 'zh-TW' ? t.typeZh : (t.typeEn || t.typeZh);
-    return `・${t.trainNo}次 ${typeName}　${t.departure}→${t.arrival}（${durationLocalized(lc, t.departure, t.arrival)}）`;
+    const typeName = trainTypeLabel(lc, t.typeZh, t.typeEn);
+    const noLabel = pick(TRAIN_NO, lc)(t.trainNo);
+    const dur = durationLocalized(lc, t.departure, t.arrival);
+    return `・${noLabel} ${typeName}　${t.departure}→${t.arrival}（${dur}）`;
   });
 
-  const whenText = lc === 'zh-TW' ? whenZh : whenLabel(lc, isTomorrow);
-
   return (
-    `🚆 台鐵 ${fromName} → ${toName}（${mmdd}）\n` +
-    `${whenText} ${fromHm} 之後的班次：\n\n` +
+    `${pick(HEADER_LIST, lc)} ${fromName} → ${toName}（${mmdd}）\n` +
+    `${pick(AFTER_LINE, lc)(whenLabel(lc, isTomorrow), fromHm)}\n\n` +
     lines.join('\n') + '\n\n' +
-    `資料來源：${SOURCE}`
+    pick(SOURCE_LINE, lc)
   );
 }
 
@@ -685,4 +772,6 @@ module.exports = {
   filterAndSort,
   duration,
   STATIONS,
+  trainTypeLabel,
+  durationLocalized,
 };
