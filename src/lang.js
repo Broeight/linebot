@@ -206,6 +206,7 @@ const HELP_MENU = {
     '🏥 就醫卡：「就醫卡 頭痛兩天發燒」→ 產生給醫護看的中文卡\n' +
     '💧 喝水提醒：「開啟喝水提醒」\n' +
     '💰 記帳：「記帳 午餐 120」｜查詢：「本月花費」\n' +
+    '🛒 購物清單：「買 醬油」加入｜「購物清單」查看｜「買到 醬油」刪除｜「清空購物清單」清空\n' +
     '🗣 每日中文小老師：「開啟學中文」｜關閉：「關閉學中文」｜看今天：「今天的中文」\n' +
     '🌀 防災警報：「開啟警報」｜關閉：「關閉警報」（颱風/地震/豪雨即時通知）\n' +
     '💱 匯率：「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
@@ -236,6 +237,7 @@ const HELP_MENU = {
     '🏥 Thẻ khám bệnh: 「khám bệnh đau đầu 2 ngày sốt」→ tạo thẻ tiếng Trung đưa cho bác sĩ\n' +
     '💧 Nhắc uống nước: 「開啟喝水提醒」\n' +
     '💰 Ghi chi tiêu: 「記帳 午餐 120」｜Xem báo cáo: 「本月花費」\n' +
+    '🛒 Danh sách mua sắm: 「mua nước mắm」thêm｜「danh sách mua sắm」xem｜「đã mua nước mắm」đã mua｜「xóa danh sách mua sắm」xoá hết\n' +
     '🗣 Học tiếng Trung mỗi ngày: bật 「開啟學中文」｜tắt: 「關閉學中文」｜xem hôm nay: 「今天的中文」\n' +
     '🌀 Cảnh báo thiên tai: 「開啟警報」/「bật cảnh báo」｜tắt: 「關閉警報」/「tắt cảnh báo」\n' +
     '💱 Tỷ giá: gõ 「tỷ giá」(mặc định TWD→VND) hoặc 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
@@ -265,6 +267,7 @@ const HELP_MENU = {
     '🏥 Medical card: 「就醫卡 headache and fever」or「khám bệnh ...」→ a Chinese card to show medical staff\n' +
     '💧 Water reminder: 「開啟喝水提醒」\n' +
     '💰 Expenses: 「記帳 午餐 120」｜Summary: 「本月花費」\n' +
+    '🛒 Shopping list: 「買 醬油」/「mua ...」add｜「購物清單」view｜「買到 X」/「đã mua X」remove｜「清空購物清單」clear\n' +
     '🗣 Daily Chinese lesson: on 「開啟學中文」｜off: 「關閉學中文」｜today\'s: 「今天的中文」\n' +
     '🌀 Disaster alerts: 「開啟警報」/「bật cảnh báo」｜off: 「關閉警報」\n' +
     '💱 Exchange rate: 「匯率 台幣 越南盾」「5000 台幣換越南盾」\n' +
@@ -545,6 +548,56 @@ const RATE_ALERT_FAIL = {
   'zh-TW': '目前抓不到匯率，請稍後再設定 🙏',
   vi: 'Hiện không lấy được tỷ giá, vui lòng thử đặt lại sau 🙏',
   en: 'Cannot fetch the exchange rate right now, please try again later 🙏',
+};
+
+// ── 購物清單（shopping）───────────────────────────────────────────────
+// 加入成功（{item}/{total} 由呼叫端代入）
+const SHOPPING_ADDED = {
+  'zh-TW': '🛒 已加入：{item}\n購物清單目前有 {total} 項',
+  vi: '🛒 Đã thêm: {item}\nDanh sách hiện có {total} món',
+  en: '🛒 Added: {item}\nThe list now has {total} item(s)',
+};
+// 加入時已存在（{item} 代入）
+const SHOPPING_ALREADY = {
+  'zh-TW': '🛒「{item}」已經在購物清單上了。',
+  vi: '🛒 "{item}" đã có trong danh sách rồi.',
+  en: '🛒 "{item}" is already on the list.',
+};
+// 檢視清單標頭（{total} 代入；shoppingList 取模板後接條列內容）
+const SHOPPING_LIST_HEADER = {
+  'zh-TW': '🛒 購物清單（{total} 項）：',
+  vi: '🛒 Danh sách mua sắm ({total} món):',
+  en: '🛒 Shopping list ({total} item(s)):',
+};
+// 空清單提示
+const SHOPPING_EMPTY = {
+  'zh-TW': '🛒 目前購物清單是空的。\n輸入「買 醬油」即可加入。',
+  vi: '🛒 Danh sách mua sắm hiện đang trống.\nGõ 「mua nước mắm」để thêm món.',
+  en: '🛒 The shopping list is empty.\nType 「買 醬油」/「mua ...」to add an item.',
+};
+// 完成刪除（{item}/{total} 代入）
+const SHOPPING_REMOVED = {
+  'zh-TW': '✅ 已買到並從清單刪除：{item}\n還剩 {total} 項',
+  vi: '✅ Đã mua và xoá khỏi danh sách: {item}\nCòn lại {total} món',
+  en: '✅ Bought and removed: {item}\n{total} item(s) left',
+};
+// 找不到品項（{item}/{list} 代入）
+const SHOPPING_NOT_FOUND = {
+  'zh-TW': '🛒 清單上沒有找到「{item}」。\n目前購物清單：\n{list}',
+  vi: '🛒 Không tìm thấy "{item}" trong danh sách.\nDanh sách hiện tại:\n{list}',
+  en: '🛒 "{item}" was not found on the list.\nCurrent list:\n{list}',
+};
+// 清空（{n} 代入）
+const SHOPPING_CLEARED = {
+  'zh-TW': '🗑 已清空購物清單（原本有 {n} 項）。',
+  vi: '🗑 Đã xoá toàn bộ danh sách mua sắm (trước đó có {n} món).',
+  en: '🗑 Shopping list cleared ({n} item(s) removed).',
+};
+// shoppingNotFound 的 {list} 佔位字：清單剛好是空的時候代入
+const SHOPPING_LIST_EMPTY_TAG = {
+  'zh-TW': '（目前是空的）',
+  vi: '(trống)',
+  en: '(empty)',
 };
 
 // 越南語使用者首次歡迎訊息
@@ -1111,6 +1164,56 @@ function markWelcomed(userId) {
   store.save(FILE, list);
 }
 
+// ── 購物清單 getter；ja/th/id 回落 en，未知碼回落 zh-TW ─────────────────
+
+// 內部小工具：品項條列（每行「・品項」），不對外匯出
+function shoppingBullets(items) {
+  return items.map((e) => '・' + e.item).join('\n');
+}
+
+// 檢視清單（{total} 代入表頭，接逐項條列）
+function shoppingList(code, items) {
+  const tmpl = SHOPPING_LIST_HEADER[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_LIST_HEADER.en : SHOPPING_LIST_HEADER['zh-TW']);
+  return tmpl.replace('{total}', items.length) + '\n' + shoppingBullets(items);
+}
+
+// 空清單提示
+function shoppingEmpty(code) {
+  return SHOPPING_EMPTY[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_EMPTY.en : SHOPPING_EMPTY['zh-TW']);
+}
+
+// 加入成功（{item}/{total} 代入）
+function shoppingAdded(code, item, total) {
+  const tmpl = SHOPPING_ADDED[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_ADDED.en : SHOPPING_ADDED['zh-TW']);
+  return tmpl.replace('{item}', item).replace('{total}', fmtNum(total));
+}
+
+// 加入時已存在（{item} 代入）
+function shoppingAlready(code, item) {
+  const tmpl = SHOPPING_ALREADY[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_ALREADY.en : SHOPPING_ALREADY['zh-TW']);
+  return tmpl.replace('{item}', item);
+}
+
+// 完成刪除（{item}/{total} 代入）
+function shoppingRemoved(code, item, total) {
+  const tmpl = SHOPPING_REMOVED[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_REMOVED.en : SHOPPING_REMOVED['zh-TW']);
+  return tmpl.replace('{item}', item).replace('{total}', fmtNum(total));
+}
+
+// 找不到品項（{item} 代入；{list} 代入目前清單條列，清單為空時代入佔位字）
+function shoppingNotFound(code, item, items) {
+  const tmpl = SHOPPING_NOT_FOUND[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_NOT_FOUND.en : SHOPPING_NOT_FOUND['zh-TW']);
+  const emptyTag = SHOPPING_LIST_EMPTY_TAG[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_LIST_EMPTY_TAG.en : SHOPPING_LIST_EMPTY_TAG['zh-TW']);
+  const list = items.length ? shoppingBullets(items) : emptyTag;
+  return tmpl.replace('{item}', item).replace('{list}', list);
+}
+
+// 清空（{n} 代入）
+function shoppingCleared(code, n) {
+  const tmpl = SHOPPING_CLEARED[code] || (code === 'ja' || code === 'th' || code === 'id' ? SHOPPING_CLEARED.en : SHOPPING_CLEARED['zh-TW']);
+  return tmpl.replace('{n}', n);
+}
+
 module.exports = {
   detect,
   noteText,
@@ -1177,4 +1280,11 @@ module.exports = {
   alertOffNone,
   alertTranslateFail,
   alertPush,
+  shoppingList,
+  shoppingEmpty,
+  shoppingAdded,
+  shoppingAlready,
+  shoppingRemoved,
+  shoppingNotFound,
+  shoppingCleared,
 };

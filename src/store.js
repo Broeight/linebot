@@ -14,7 +14,7 @@ const KNOWN_KEYS = [
   'reminders.json', 'lang.json', 'birthdays.json', 'morning.json',
   'morning-state.json', 'health.json', 'expense.json', 'rateAlert.json',
   'groupTranslate.json', 'tutor.json', 'tutor-state.json',
-  'alertSub.json', 'alert-state.json',
+  'alertSub.json', 'alert-state.json', 'shopping.json',
 ];
 
 const DEBOUNCE_MS = 2000;
