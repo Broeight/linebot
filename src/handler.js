@@ -31,6 +31,7 @@ const vnHoliday = require('./services/vnHoliday');
 const imagePending = require('./services/imagePending');
 const tutor = require('./services/tutor');
 const disasterAlert = require('./services/disasterAlert');
+const shopping = require('./services/shopping');
 
 const WATER_TIMES = ['09:00', '11:00', '14:00', '16:00', '19:00', '21:00'];
 
@@ -471,6 +472,44 @@ async function handleText(userId, text) {
   if (trimmed === '關閉喝水提醒') {
     reminder.removeByTag(userId, 'water');
     return '已關閉喝水提醒。';
+  }
+
+  // ── 購物清單 ─────────────────────────────────────────
+  // 檢視
+  if (trimmed === '購物清單' || /^danh sach mua sam$/.test(asciiTrimmed)) {
+    const code = await lang.resolve(userId);
+    const items = shopping.list();
+    return items.length ? lang.shoppingList(code, items) : lang.shoppingEmpty(code);
+  }
+  // 清空
+  if (trimmed === '清空購物清單' || /^xoa danh sach mua sam$/.test(asciiTrimmed)) {
+    const code = await lang.resolve(userId);
+    return lang.shoppingCleared(code, shopping.clear());
+  }
+  // 完成刪除：買到 X（原文）／đã mua X（toAscii 比對、參數用原文切片）
+  const buyDoneZh = trimmed.match(/^買到\s+(.+)$/);
+  const buyDoneVi = asciiTrimmed.match(/^da mua\s+(.+)$/);
+  if (buyDoneZh || buyDoneVi) {
+    const code = await lang.resolve(userId);
+    let item;
+    if (buyDoneZh) item = buyDoneZh[1].trim();
+    else {
+      const s = buyDoneVi.index + buyDoneVi[0].length - buyDoneVi[1].length; // 從原文切片保留聲調
+      item = trimmed.slice(s).trim();
+    }
+    const r = shopping.remove(item);
+    return r.ok ? lang.shoppingRemoved(code, r.item, r.total)
+                : lang.shoppingNotFound(code, item, shopping.list());
+  }
+  // 加入：買 X（原文）／mua X（★用「原文 trimmed」比對，非 asciiTrimmed，避免 mùa/mưa 誤判）
+  const buyZh = trimmed.match(/^買\s+(.+)$/);
+  const buyVi = trimmed.match(/^mua\s+(.+)$/i);
+  if (buyZh || buyVi) {
+    const code = await lang.resolve(userId);
+    const item = (buyZh ? buyZh[1] : buyVi[1]).trim();
+    const r = shopping.add(item, userId);
+    return r.already ? lang.shoppingAlready(code, r.item)
+                     : lang.shoppingAdded(code, r.item, r.total);
   }
 
   // ── 預設：AI 對話（可用工具：自然語句設提醒、記帳、查發票、查天氣）──
