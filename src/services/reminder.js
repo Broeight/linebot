@@ -22,7 +22,45 @@ function taipeiParts() {
     hour: '2-digit', minute: '2-digit',
   });
   const p = Object.fromEntries(fmt.formatToParts(new Date()).map((x) => [x.type, x.value]));
-  return { date: `${p.year}-${p.month}-${p.day}`, hm: `${p.hour}:${p.minute}` };
+  const date = `${p.year}-${p.month}-${p.day}`;
+  // 星期（0-6，0=Sunday）：取台北當天中午（=UTC 04:00 同一日曆日）避免伺服器本地時區影響
+  const weekday = new Date(`${date}T12:00:00+08:00`).getUTCDay();
+  const day = Number(p.day);
+  // 當月天數：以 UTC 建構「下個月第 0 天」＝當月最後一天，避免伺服器本地時區
+  const daysInMonth = new Date(Date.UTC(Number(p.year), Number(p.month), 0)).getUTCDate();
+  return { date, hm: `${p.hour}:${p.minute}`, weekday, day, daysInMonth };
+}
+
+// 星期代碼小表（index = weekday 0-6，0=Sunday）
+const WD_ZH = ['日', '一', '二', '三', '四', '五', '六'];
+const WD_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WD_NAMES = WD_EN.map((s) => s.toLowerCase());
+
+// 把使用者/模型給的 weekday（整數 0-6、英文全名、三字縮寫、數字字串）轉成 0-6；無法辨識回 null
+function toWeekdayNum(v) {
+  if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 6) return v;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (/^[0-6]$/.test(s)) return Number(s);
+    const full = WD_NAMES.indexOf(s);
+    if (full !== -1) return full;
+    const abbr = WD_NAMES.findIndex((name) => name.slice(0, 3) === s);
+    if (abbr !== -1) return abbr;
+  }
+  return null;
+}
+
+/** 某使用者可列入編號的提醒（不含 tag 提醒），依插入順序（檔案順序）。list()／removeByIndex() 共用。 */
+function listable(userId, all) {
+  return all.filter((r) => r.userId === userId && !r.tag);
+}
+
+/** 提醒的週期文字描述（中文，list()／removeByIndex() 共用）。 */
+function describeWhen(r) {
+  if (r.type === 'daily') return `每天 ${r.dailyTime}`;
+  if (r.type === 'weekly') return `每週${WD_ZH[r.weekday]} ${r.time}`;
+  if (r.type === 'monthly') return `每月${r.dayOfMonth}號 ${r.time}`;
+  return new Date(r.fireAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 }
 
 // 「YYYY-MM-DD HH:mm」(台北時間) → epoch 毫秒
@@ -31,16 +69,29 @@ function taipeiToEpoch(s) {
   return Number.isNaN(t) ? null : t;
 }
 
+// 正規化「HH:mm」字串；格式不符或時分超出範圍（如 25:00）回 null，
+// 避免存下「確認成功但 tick 永遠比不中」的死提醒（無聲失敗）。
+function normHM(s) {
+  const m = (s || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m || +m[1] > 23 || +m[2] > 59) return null;
+  return `${String(+m[1]).padStart(2, '0')}:${m[2]}`;
+}
+
 async function parse(text) {
   const now = taipeiParts();
   const system =
-    `你是提醒解析助理。現在台北時間是 ${now.date} ${now.hm}。\n` +
+    `你是提醒解析助理。現在台北時間是 ${now.date} ${now.hm}（星期以台北為準）。\n` +
     '使用者會用自然語言設定提醒，請只輸出 JSON：\n' +
-    '- 成功且為一次性：{"ok":true,"type":"once","datetime":"YYYY-MM-DD HH:mm","message":"提醒內容"}\n' +
-    '- 成功且為每天重複：{"ok":true,"type":"daily","dailyTime":"HH:mm","message":"提醒內容"}\n' +
-    '- 無法判斷時間：{"ok":false}\n' +
-    '規則：出現「每天/每日」用 daily，否則 once；once 的 datetime 要用現在時間推算成未來時間；' +
-    'message 只保留事項本身，不要包含時間詞。';
+    '- 一次性：{"ok":true,"type":"once","datetime":"YYYY-MM-DD HH:mm","message":"提醒內容"}\n' +
+    '- 每天：{"ok":true,"type":"daily","dailyTime":"HH:mm","message":"提醒內容"}\n' +
+    '- 每週：{"ok":true,"type":"weekly","weekday":"wednesday","time":"HH:mm","message":"提醒內容"}\n' +
+    '- 每月：{"ok":true,"type":"monthly","dayOfMonth":5,"time":"HH:mm","message":"提醒內容"}\n' +
+    '- 無法判斷：{"ok":false}\n' +
+    '規則：出現「每週/每星期/每禮拜」用 weekly；「每月/每個月」用 monthly；「每天/每日」用 daily；否則 once。\n' +
+    'weekday 用英文小寫（sunday/monday/tuesday/wednesday/thursday/friday/saturday）；\n' +
+    '週日/星期日/禮拜日=sunday，週三/星期三/禮拜三=wednesday，其餘同理。\n' +
+    'dayOfMonth 是 1-31 的數字。未指定時刻一律用 "09:00"。\n' +
+    'once 的 datetime 要用現在時間推算成未來時間。message 只保留事項本身，不含時間詞。';
   return ai.askJSON(system, text);
 }
 
@@ -65,6 +116,23 @@ async function add(userId, text) {
     return `✅ 好的，每天 ${r.dailyTime} 我會提醒你：「${r.message}」`;
   }
 
+  if (r.type === 'weekly') {
+    const wd = toWeekdayNum(r.weekday);
+    if (wd === null) return '我看不懂時間 😅 換個說法試試：\n「提醒我 明天下午3點 回診」\n「提醒 每天早上8點 吃藥」';
+    const hm = normHM(r.time) || '09:00';
+    list.push({ id, userId, type: 'weekly', weekday: wd, time: hm, message: r.message, lastFired: '' });
+    save(list);
+    return `✅ 好的，每週${WD_ZH[wd]} ${hm} 我會提醒你：「${r.message}」`;
+  }
+  if (r.type === 'monthly') {
+    const d = Number(r.dayOfMonth);
+    if (!Number.isInteger(d) || d < 1 || d > 31) return '我看不懂時間 😅 換個說法試試：\n「提醒我 明天下午3點 回診」\n「提醒 每天早上8點 吃藥」';
+    const hm = normHM(r.time) || '09:00';
+    list.push({ id, userId, type: 'monthly', dayOfMonth: d, time: hm, message: r.message, lastFired: '' });
+    save(list);
+    return `✅ 好的，每月${d}號 ${hm} 我會提醒你：「${r.message}」`;
+  }
+
   const fireAt = taipeiToEpoch(r.datetime || '');
   if (!fireAt) {
     return '我看不懂時間 😅 請說清楚日期時間，例如「明天下午3點」。';
@@ -80,10 +148,6 @@ async function add(userId, text) {
 
 /** 用已結構化的資料直接新增提醒（給 AI 工具用，省去再次 AI 解析）。回 {ok, when}。 */
 function addParsed(userId, p) {
-  const normHM = (s) => {
-    const m = (s || '').match(/^(\d{1,2}):(\d{2})$/);
-    return m ? `${String(+m[1]).padStart(2, '0')}:${m[2]}` : null;
-  };
   const list = load();
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
@@ -94,6 +158,22 @@ function addParsed(userId, p) {
     save(list);
     return { ok: true, when: `every day ${hm}` };
   }
+  if (p.type === 'weekly') {
+    const wd = toWeekdayNum(p.weekday);
+    if (wd === null) return { ok: false };
+    const hm = normHM(p.time) || '09:00';
+    list.push({ id, userId, type: 'weekly', weekday: wd, time: hm, message: p.message, lastFired: '' });
+    save(list);
+    return { ok: true, when: `every ${WD_EN[wd]} ${hm}` };
+  }
+  if (p.type === 'monthly') {
+    const d = Number(p.dayOfMonth);
+    if (!Number.isInteger(d) || d < 1 || d > 31) return { ok: false };
+    const hm = normHM(p.time) || '09:00';
+    list.push({ id, userId, type: 'monthly', dayOfMonth: d, time: hm, message: p.message, lastFired: '' });
+    save(list);
+    return { ok: true, when: `every month on day ${d}, ${hm}` };
+  }
   const fireAt = taipeiToEpoch(p.datetime || '');
   if (!fireAt || fireAt <= Date.now()) return { ok: false }; // 無法解析或時間已過
   list.push({ id, userId, type: 'once', fireAt, message: p.message });
@@ -103,12 +183,10 @@ function addParsed(userId, p) {
 
 /** 列出某使用者的提醒（有 tag 的預設提醒，例如喝水，不逐筆列出）。 */
 function list(userId) {
-  const mine = load().filter((r) => r.userId === userId);
-  const items = mine.filter((r) => !r.tag);
-  const lines = items.map((r, i) => {
-    const when = r.type === 'daily' ? `每天 ${r.dailyTime}` : new Date(r.fireAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-    return `${i + 1}. ${when}｜${r.message}`;
-  });
+  const all = load();
+  const mine = all.filter((r) => r.userId === userId);
+  const items = listable(userId, all);
+  const lines = items.map((r, i) => `${i + 1}. ${describeWhen(r)}｜${r.message}`);
 
   let out = '';
   if (lines.length > 0) out += '⏰ 你的提醒：\n' + lines.join('\n');
@@ -141,6 +219,20 @@ function clear(userId) {
   return '🗑 已清除你所有的提醒。';
 }
 
+/** 依「提醒清單」編號刪除單筆提醒（即時重算編號，不快取）。回傳給使用者的訊息。 */
+function removeByIndex(userId, n) {
+  const all = load();
+  const mine = listable(userId, all);
+  if (!Number.isInteger(n) || n < 1 || n > mine.length) {
+    return n === null
+      ? '請輸入「刪除提醒 編號」，例如「刪除提醒 2」。先輸入「提醒清單」可看編號。'
+      : `找不到編號 ${n} 的提醒，請先輸入「提醒清單」確認編號。`;
+  }
+  const target = mine[n - 1];
+  save(all.filter((r) => r.id !== target.id));
+  return `🗑 已刪除提醒：${describeWhen(target)}｜${target.message}`;
+}
+
 async function push(userId, message) {
   let prefix = '⏰ 提醒：';
   try {
@@ -160,14 +252,12 @@ async function push(userId, message) {
 // 變更，避免覆蓋這段期間 webhook 新增的提醒（P0-1 資料競態）。
 let ticking = false;
 
-async function tick() {
+async function tick(now = taipeiParts(), nowMs = Date.now()) {
   if (ticking) return; // 防重入
   ticking = true;
   try {
-    const now = taipeiParts();
-    const nowMs = Date.now();
     const firedOnce = [];
-    const firedDaily = [];
+    const firedRepeat = [];
 
     for (const r of load()) {
       if (r.type === 'once' && r.fireAt <= nowMs) {
@@ -175,15 +265,21 @@ async function tick() {
         firedOnce.push(r.id);
       } else if (r.type === 'daily' && r.dailyTime === now.hm && r.lastFired !== now.date) {
         await push(r.userId, r.message);
-        firedDaily.push(r.id);
+        firedRepeat.push(r.id);
+      } else if (r.type === 'weekly' && now.weekday === r.weekday && r.time === now.hm && r.lastFired !== now.date) {
+        await push(r.userId, r.message);
+        firedRepeat.push(r.id);
+      } else if (r.type === 'monthly' && now.day === Math.min(r.dayOfMonth, now.daysInMonth) && r.time === now.hm && r.lastFired !== now.date) {
+        await push(r.userId, r.message);
+        firedRepeat.push(r.id);
       }
     }
 
-    if (firedOnce.length || firedDaily.length) {
+    if (firedOnce.length || firedRepeat.length) {
       // 重新載入最新資料，只依 id 套用「已送」狀態，不整包覆寫
       const fresh = load()
         .filter((r) => !firedOnce.includes(r.id))
-        .map((r) => (firedDaily.includes(r.id) ? { ...r, lastFired: now.date } : r));
+        .map((r) => (firedRepeat.includes(r.id) ? { ...r, lastFired: now.date } : r));
       save(fresh);
     }
   } catch (e) {
@@ -199,4 +295,4 @@ function start() {
   console.log('⏰ 提醒排程已啟動');
 }
 
-module.exports = { add, addParsed, list, clear, start, addDailyPreset, removeByTag };
+module.exports = { add, addParsed, list, clear, start, addDailyPreset, removeByTag, removeByIndex, tick, taipeiParts };
