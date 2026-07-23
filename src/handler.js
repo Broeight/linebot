@@ -198,6 +198,15 @@ async function handleText(userId, text) {
   if (trimmed === '提醒清單' || trimmed === '我的提醒') {
     return reminder.list(userId);
   }
+  // 帶編號的單筆刪除：必須在精確全刪比對之前。
+  // \s* 容忍「刪除提醒3」無空白寫法（長輩常見）；裸字「刪除提醒」因 (.+) 需至少一字
+  // 仍不會命中，照舊落到下面的精確比對走全刪。
+  const delOneMatch = trimmed.match(/^刪除提醒\s*(.+)$/);
+  if (delOneMatch) {
+    const arg = delOneMatch[1].trim();
+    const n = /^\d+$/.test(arg) ? parseInt(arg, 10) : null; // 非數字 → null → removeByIndex 回錯誤句
+    return reminder.removeByIndex(userId, n);
+  }
   if (trimmed === '清除提醒' || trimmed === '刪除提醒' || trimmed === '提醒清除') {
     return reminder.clear(userId);
   }

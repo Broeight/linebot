@@ -38,13 +38,16 @@ const defs = [
     type: 'function',
     function: {
       name: 'set_reminder',
-      description: '幫使用者設定提醒。當使用者要求在某時間提醒某件事（吃藥、回診、繳費等），用任何語言都呼叫此工具。',
+      description: '幫使用者設定提醒。當使用者要求在某時間提醒某件事（吃藥、回診、繳費等），用任何語言都呼叫此工具。支援一次性/每天/每週/每月。',
       parameters: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['once', 'daily'], description: '一次性用 "once"，每天重複用 "daily"' },
-          datetime: { type: 'string', description: 'type=once 時：依背景提供的台北現在時間，推算成 "YYYY-MM-DD HH:mm"' },
-          daily_time: { type: 'string', description: 'type=daily 時：每天幾點，格式 "HH:mm"' },
+          type: { type: 'string', enum: ['once', 'daily', 'weekly', 'monthly'], description: 'once=一次；daily=每天；weekly=每週固定星期；monthly=每月固定日期' },
+          datetime: { type: 'string', description: 'type=once：依背景提供的台北現在時間推算成 "YYYY-MM-DD HH:mm"' },
+          daily_time: { type: 'string', description: 'type=daily：每天幾點，"HH:mm"' },
+          weekday: { type: 'string', enum: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'], description: 'type=weekly：星期幾（英文小寫）' },
+          day_of_month: { type: 'number', description: 'type=monthly：每月幾號，1-31 整數' },
+          time: { type: 'string', description: 'type=weekly 或 monthly：幾點，"HH:mm"；未指定用 "09:00"' },
           message: { type: 'string', description: '要提醒的事項，用使用者自己的語言' },
         },
         required: ['type', 'message'],
@@ -315,6 +318,9 @@ async function run(userId, name, argsJson) {
           type: a.type,
           datetime: a.datetime,
           dailyTime: a.daily_time,
+          weekday: a.weekday,
+          dayOfMonth: a.day_of_month,
+          time: a.time,
           message: a.message,
         });
         return r.ok
