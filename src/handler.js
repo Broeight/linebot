@@ -412,6 +412,8 @@ async function handleText(userId, text) {
   if (trimmed === '生日清單') return birthday.list(userId);
   const bdDel = trimmed.match(/^刪除生日\s*(.+)$/);
   if (bdDel) return birthday.remove(userId, bdDel[1]);
+  const bdLunar = trimmed.match(/^農曆生日\s+(.+)$/);
+  if (bdLunar) return birthday.addLunar(userId, bdLunar[1]);
   const bdAdd = trimmed.match(/^生日\s+(.+)$/);
   if (bdAdd) return birthday.add(userId, bdAdd[1]);
 
