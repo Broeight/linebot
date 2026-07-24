@@ -1,0 +1,30 @@
+# 每次開 PR（以及推進 main）自動跑測試，結果直接顯示在 PR 頁面上。
+# 綠勾＝這次改動沒有弄壞既有功能；紅叉＝先別 merge。
+name: 測試
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: 跑測試
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x' # 與 package.json engines／Render 生產環境一致
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+        env:
+          # 測試完全離線、不會真的呼叫這些服務；但 Groq SDK 在「載入當下」就會
+          # 檢查金鑰存在，缺了會直接 throw，所以這裡放不具效力的假值。
+          GROQ_API_KEY: test-key-not-used
+          LINE_CHANNEL_ACCESS_TOKEN: test-token
+          LINE_CHANNEL_SECRET: test-secret
