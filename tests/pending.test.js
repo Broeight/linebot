@@ -6,7 +6,7 @@
 // - sanitizeItem 沒把數字去掉，導致店名被記帳的取數 regex 誤抓
 // - 兩個獨立的 pending 狀態機（imagePending／traChoice）彼此觸發字串互相誤命中
 
-require('./helpers'); // 只為了設定假金鑰，避免 require src 時 Groq SDK 爆掉
+const h = require('./helpers'); // 設定假金鑰（避免 require src 時 Groq SDK 爆掉）＋相對日期工具
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert');
 
@@ -32,11 +32,14 @@ test('parseVisionTag：正常解析 receipt 標籤，text 與 tag 都正確', ()
 });
 
 test('parseVisionTag：正常解析 document 標籤（deadline/title/amount）', () => {
-  const raw = '這是一張繳費通知單\n##TAG {"type":"document","deadline":"2026-08-01","amount":1200,"title":"繳水電費"}';
+  // 期限必須是「未來」的日期：正式程式會丟掉已過期的期限（正確行為），
+  // 所以這裡相對取日期，寫死會在該日過後讓測試無故變紅（已發生過一次）。
+  const deadline = h.ymdOffset(30);
+  const raw = `這是一張繳費通知單\n##TAG {"type":"document","deadline":"${deadline}","amount":1200,"title":"繳水電費"}`;
   const { text, tag } = imagePending.parseVisionTag(raw);
   assert.strictEqual(text, '這是一張繳費通知單');
   assert.strictEqual(tag.type, 'document');
-  assert.strictEqual(tag.deadline, '2026-08-01');
+  assert.strictEqual(tag.deadline, deadline);
   assert.strictEqual(tag.amount, 1200);
   assert.strictEqual(tag.title, '繳水電費');
 });

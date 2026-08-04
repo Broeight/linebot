@@ -92,6 +92,9 @@ const SIMPLE_GETTERS = {
   shoppingAdded: () => ['測試', 3],
   shoppingRemoved: () => ['測試', 2],
   shoppingNotFound: () => ['測試', [{ item: '醬油' }, { item: '鹽' }]],
+  reminderClearedAll: () => [],
+  reminderDeleted: () => [[{ when: '每天 08:00', message: '吃藥' }, { when: '每週三 19:00', message: '倒垃圾' }]],
+  reminderNoMatch: () => ['吃藥'],
   shoppingList: () => [[{ item: '醬油' }, { item: '鹽' }]],
   rateAlertHit: () => [1000, 950],
 };

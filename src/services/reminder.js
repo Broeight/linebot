@@ -8,6 +8,7 @@ const ai = require('../ai');
 const lang = require('../lang');
 const { client } = require('../line');
 const store = require('../store');
+const { toAscii } = require('./traTrain'); // 去聲調比對（越南語提醒內容用）
 
 const FILE = 'reminders.json';
 const load = () => store.load(FILE);
@@ -53,6 +54,43 @@ function toWeekdayNum(v) {
 /** 某使用者可列入編號的提醒（不含 tag 提醒），依插入順序（檔案順序）。list()／removeByIndex() 共用。 */
 function listable(userId, all) {
   return all.filter((r) => r.userId === userId && !r.tag);
+}
+
+// 越南語星期名（供取消提醒的確認訊息用）
+const WD_VI = ['Chủ Nhật', 'thứ Hai', 'thứ Ba', 'thứ Tư', 'thứ Năm', 'thứ Sáu', 'thứ Bảy'];
+
+// 週期敘述的多語版本。⚠️ 僅供「取消提醒的確認訊息」使用——本模組其餘輸出（提醒清單、
+// 新增確認…）維持中文（PR #22 決策），故 describeWhen() 保持原樣不動、零回歸。
+const WHEN_FMT = {
+  'zh-TW': {
+    daily: (r) => `每天 ${r.dailyTime}`,
+    weekly: (r) => `每週${WD_ZH[r.weekday]} ${r.time}`,
+    monthly: (r) => `每月${r.dayOfMonth}號 ${r.time}`,
+  },
+  vi: {
+    daily: (r) => `hàng ngày ${r.dailyTime}`,
+    weekly: (r) => `${WD_VI[r.weekday]} hàng tuần ${r.time}`,
+    monthly: (r) => `ngày ${r.dayOfMonth} hàng tháng ${r.time}`,
+  },
+  en: {
+    daily: (r) => `every day ${r.dailyTime}`,
+    weekly: (r) => `every ${WD_EN[r.weekday]} ${r.time}`,
+    monthly: (r) => `day ${r.dayOfMonth} monthly ${r.time}`,
+  },
+};
+
+/** 週期敘述（依語言）。once 用不依賴語言的 YYYY-MM-DD HH:mm（台北時間）。 */
+function describeWhenFor(r, code) {
+  if (code === 'zh-TW' || !code) return describeWhen(r); // 中文沿用既有字面
+  const fmt = WHEN_FMT[code] || WHEN_FMT.en;
+  if (fmt[r.type]) return fmt[r.type](r);
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date(r.fireAt)).map((x) => [x.type, x.value])
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
 /** 提醒的週期文字描述（中文，list()／removeByIndex() 共用）。 */
@@ -151,34 +189,36 @@ function addParsed(userId, p) {
   const list = load();
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-  if (p.type === 'daily') {
-    const hm = normHM(p.dailyTime);
-    if (!hm) return { ok: false };
-    list.push({ id, userId, type: 'daily', dailyTime: hm, message: p.message, lastFired: '' });
-    save(list);
-    return { ok: true, when: `every day ${hm}` };
-  }
-  if (p.type === 'weekly') {
-    const wd = toWeekdayNum(p.weekday);
-    if (wd === null) return { ok: false };
-    const hm = normHM(p.time) || '09:00';
-    list.push({ id, userId, type: 'weekly', weekday: wd, time: hm, message: p.message, lastFired: '' });
-    save(list);
-    return { ok: true, when: `every ${WD_EN[wd]} ${hm}` };
-  }
-  if (p.type === 'monthly') {
-    const d = Number(p.dayOfMonth);
-    if (!Number.isInteger(d) || d < 1 || d > 31) return { ok: false };
-    const hm = normHM(p.time) || '09:00';
-    list.push({ id, userId, type: 'monthly', dayOfMonth: d, time: hm, message: p.message, lastFired: '' });
-    save(list);
-    return { ok: true, when: `every month on day ${d}, ${hm}` };
-  }
-  const fireAt = taipeiToEpoch(p.datetime || '');
-  if (!fireAt || fireAt <= Date.now()) return { ok: false }; // 無法解析或時間已過
-  list.push({ id, userId, type: 'once', fireAt, message: p.message });
+  // 各型別各自驗證並組出待寫入的紀錄；驗證失敗回 null
+  const built = (() => {
+    if (p.type === 'daily') {
+      const hm = normHM(p.dailyTime);
+      if (!hm) return null;
+      return { rec: { id, userId, type: 'daily', dailyTime: hm, message: p.message, lastFired: '' }, when: `every day ${hm}` };
+    }
+    if (p.type === 'weekly') {
+      const wd = toWeekdayNum(p.weekday);
+      if (wd === null) return null;
+      const hm = normHM(p.time) || '09:00';
+      return { rec: { id, userId, type: 'weekly', weekday: wd, time: hm, message: p.message, lastFired: '' }, when: `every ${WD_EN[wd]} ${hm}` };
+    }
+    if (p.type === 'monthly') {
+      const d = Number(p.dayOfMonth);
+      if (!Number.isInteger(d) || d < 1 || d > 31) return null;
+      const hm = normHM(p.time) || '09:00';
+      return { rec: { id, userId, type: 'monthly', dayOfMonth: d, time: hm, message: p.message, lastFired: '' }, when: `every month on day ${d}, ${hm}` };
+    }
+    const fireAt = taipeiToEpoch(p.datetime || '');
+    if (!fireAt || fireAt <= Date.now()) return null; // 無法解析或時間已過
+    return { rec: { id, userId, type: 'once', fireAt, message: p.message }, when: p.datetime };
+  })();
+
+  if (!built) return { ok: false };
+  // 已有一模一樣的提醒就不再新增（防重複轟炸），但仍回報成功讓使用者知道它存在
+  if (isDuplicate(list, userId, built.rec)) return { ok: true, when: built.when, duplicate: true };
+  list.push(built.rec);
   save(list);
-  return { ok: true, when: p.datetime };
+  return { ok: true, when: built.when };
 }
 
 /** 列出某使用者的提醒（有 tag 的預設提醒，例如喝水，不逐筆列出）。 */
@@ -217,6 +257,61 @@ function clear(userId) {
   const kept = load().filter((r) => r.userId !== userId);
   save(kept);
   return '🗑 已清除你所有的提醒。';
+}
+
+/**
+ * 依「事項關鍵字」刪除提醒——讓任何語言的使用者都能用自然語句取消提醒
+ * （在此之前只有中文的「刪除提醒 N」可用，越南語使用者被提醒轟炸卻無法自行關閉）。
+ * 比對用去聲調＋小寫，雙向包含（關鍵字含於內容，或內容含於關鍵字，後者讓
+ * 「結束提醒 吃藥 每天」這種整句也能命中）。
+ * @returns {{ok:boolean, removed:Array<{when:string,message:string}>, remaining:number}}
+ */
+function removeByKeyword(userId, keyword, code) {
+  const key = toAscii(String(keyword || '').trim());
+  const all = load();
+  const fail = () => ({ ok: false, removed: [], remaining: listable(userId, all).length });
+  if (key.length < 1) return fail();
+
+  const hit = (r) => {
+    const msg = toAscii(String(r.message || '').trim());
+    if (!msg) return false;
+    if (msg.includes(key)) return true;
+    // 反向包含：整句當關鍵字時也能命中；限定 msg 夠長，避免極短內容誤中
+    return msg.length >= 2 && key.includes(msg);
+  };
+
+  const mine = all.filter((r) => r.userId === userId && hit(r));
+  if (mine.length === 0) return fail();
+
+  const ids = new Set(mine.map((r) => r.id));
+  const kept = all.filter((r) => !ids.has(r.id));
+  save(kept);
+  return {
+    ok: true,
+    removed: mine.map((r) => ({ when: describeWhenFor(r, code), message: r.message })),
+    remaining: listable(userId, kept).length,
+  };
+}
+
+/**
+ * 是否已有「同週期、同時刻、同內容」的提醒。
+ * 防止使用者以為沒設成功而反覆重設，累積成每天多則的重複轟炸（真實事故）。
+ */
+function isDuplicate(all, userId, cand) {
+  const norm = (s) => toAscii(String(s || '').trim());
+  const same = (a, b) => (a ?? null) === (b ?? null);
+  return all.some(
+    (r) =>
+      r.userId === userId &&
+      !r.tag && // 喝水提醒等預設批次不參與比對
+      r.type === cand.type &&
+      norm(r.message) === norm(cand.message) &&
+      same(r.dailyTime, cand.dailyTime) &&
+      same(r.time, cand.time) &&
+      same(r.weekday, cand.weekday) &&
+      same(r.dayOfMonth, cand.dayOfMonth) &&
+      same(r.fireAt, cand.fireAt)
+  );
 }
 
 /** 依「提醒清單」編號刪除單筆提醒（即時重算編號，不快取）。回傳給使用者的訊息。 */
@@ -295,4 +390,7 @@ function start() {
   console.log('⏰ 提醒排程已啟動');
 }
 
-module.exports = { add, addParsed, list, clear, start, addDailyPreset, removeByTag, removeByIndex, tick, taipeiParts };
+module.exports = {
+  add, addParsed, list, clear, start, addDailyPreset, removeByTag,
+  removeByIndex, removeByKeyword, tick, taipeiParts,
+};

@@ -65,6 +65,26 @@ const defs = [
   {
     type: 'function',
     function: {
+      name: 'delete_reminder',
+      description:
+        '取消／刪除／停止使用者已經設定好的提醒。當使用者用任何語言表達「取消提醒」「不要再提醒我了」'
+        + '「結束提醒」「停止提醒」「kết thúc nhắc nhở」「xóa nhắc nhở」時，一定要呼叫此工具，'
+        + '絕對不要改用 set_reminder（那是用來「新增」的）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword: {
+            type: 'string',
+            description: '要取消的提醒事項關鍵字，用使用者原話裡的事項名（例如「吃藥」、「ăn kim chi」）。要取消全部時不要填。',
+          },
+          all: { type: 'boolean', description: 'true＝取消所有提醒。只有使用者明確說「全部」時才用。' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'add_expense',
       description: '幫使用者記一筆家庭開銷。當他說花了多少錢買什麼時呼叫。',
       parameters: {
@@ -323,12 +343,28 @@ async function run(userId, name, argsJson) {
           time: a.time,
           message: a.message,
         });
-        return r.ok
-          ? `Reminder saved (${r.when}): ${a.message}`
-          : 'Could not understand the time — ask the user to clarify.';
+        if (!r.ok) return 'FAILED: time_unclear (a specific time is required, e.g. "07:00 daily")';
+        if (r.duplicate) return `ALREADY_EXISTS: an identical reminder (${r.when}) is already set — nothing was added.`;
+        return `Reminder saved (${r.when}): ${a.message}`;
       }
       case 'list_reminders':
         return reminder.list(userId);
+      case 'delete_reminder': {
+        if (a.all === true) {
+          const before = reminder.list(userId);
+          reminder.clear(userId);
+          return `DELETED_ALL. The reminders that were removed: ${before}`;
+        }
+        if (!a.keyword) {
+          return `NEED_KEYWORD: which reminder to cancel was not specified. Current reminders: ${reminder.list(userId)}`;
+        }
+        const r = reminder.removeByKeyword(userId, a.keyword, 'en'); // 回給模型看，用英文
+        if (!r.ok) {
+          return `NOT_FOUND: nothing matched "${a.keyword}". Current reminders: ${reminder.list(userId)}`;
+        }
+        const removed = r.removed.map((x) => `${x.when} - ${x.message}`).join('; ');
+        return `DELETED ${r.removed.length}: ${removed}. Remaining: ${r.remaining}`;
+      }
       case 'add_expense': {
         const total = expense.addItem(userId, a.item, a.amount);
         return `Expense logged: ${a.item} NT$${a.amount}. This month total: NT$${total}.`;

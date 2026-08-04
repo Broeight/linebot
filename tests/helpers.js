@@ -118,4 +118,22 @@ function spyOn(mod, name, fn) {
   return { calls, restore() { mod[name] = original; } };
 }
 
-module.exports = { setup, spyOn, DEFAULT_NOW };
+/**
+ * 相對於「真實時鐘」的日期字串（台北時區，YYYY-MM-DD）。
+ *
+ * ⚠️ 為什麼需要這個：多數測試用 `env.setTime()` 注入假時鐘就好，但少數正式程式碼
+ * 是拿**真實** `Date.now()` 比對的（例如 reminder 的 once 分支要求時間必須在未來、
+ * imagePending 會丟掉已過期的期限）。那些測試若寫死日期，日子一過就會無故變紅
+ * ——真的發生過。這類測試一律用本函式取相對日期。
+ *
+ * @param {number} offsetDays 相對今天的天數（正＝未來）
+ */
+function ymdOffset(offsetDays) {
+  const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
+}
+
+module.exports = { setup, spyOn, ymdOffset, DEFAULT_NOW };

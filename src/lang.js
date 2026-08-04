@@ -593,6 +593,23 @@ const SHOPPING_CLEARED = {
   vi: '🗑 Đã xoá toàn bộ danh sách mua sắm (trước đó có {n} món).',
   en: '🗑 Shopping list cleared ({n} item(s) removed).',
 };
+
+// ── 提醒的取消結果（非中文使用者也要看得懂，故不沿用 reminder.js 的中文硬編字串）──
+const REMINDER_CLEARED_ALL = {
+  'zh-TW': '🗑 已清除你所有的提醒。',
+  vi: '🗑 Đã xoá tất cả nhắc nhở của bạn.',
+  en: '🗑 All your reminders have been deleted.',
+};
+const REMINDER_DELETED = {
+  'zh-TW': '🗑 已取消 {n} 個提醒：\n{list}',
+  vi: '🗑 Đã huỷ {n} nhắc nhở:\n{list}',
+  en: '🗑 Cancelled {n} reminder(s):\n{list}',
+};
+const REMINDER_NO_MATCH = {
+  'zh-TW': '找不到包含「{keyword}」的提醒。',
+  vi: 'Không tìm thấy nhắc nhở nào có "{keyword}".',
+  en: 'No reminder matching "{keyword}" was found.',
+};
 // shoppingNotFound 的 {list} 佔位字：清單剛好是空的時候代入
 const SHOPPING_LIST_EMPTY_TAG = {
   'zh-TW': '（目前是空的）',
@@ -1214,6 +1231,22 @@ function shoppingCleared(code, n) {
   return tmpl.replace('{n}', n);
 }
 
+// ── 提醒取消結果（三語）────────────────────────────────
+const remTmpl = (table, code) =>
+  table[code] || (code === 'ja' || code === 'th' || code === 'id' ? table.en : table['zh-TW']);
+
+function reminderClearedAll(code) {
+  return remTmpl(REMINDER_CLEARED_ALL, code);
+}
+/** @param {Array<{when:string,message:string}>} removed */
+function reminderDeleted(code, removed) {
+  const list = removed.map((r) => `・${r.when}｜${r.message}`).join('\n');
+  return remTmpl(REMINDER_DELETED, code).replace('{n}', removed.length).replace('{list}', list);
+}
+function reminderNoMatch(code, keyword) {
+  return remTmpl(REMINDER_NO_MATCH, code).replace('{keyword}', keyword);
+}
+
 module.exports = {
   detect,
   noteText,
@@ -1287,4 +1320,7 @@ module.exports = {
   shoppingRemoved,
   shoppingNotFound,
   shoppingCleared,
+  reminderClearedAll,
+  reminderDeleted,
+  reminderNoMatch,
 };
