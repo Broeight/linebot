@@ -277,9 +277,12 @@ test('list()：沒有任何提醒時顯示引導句', () => {
 // ── add()（自然語言路徑）：鎖字面（使用者天天看到的成功確認句）──────────
 
 test('add()：once 成功確認句鎖精確字串', async () => {
-  env.setAi('askJSON', async () => ({ ok: true, type: 'once', datetime: '2026-07-25 09:00', message: '回診' }));
+  // once 分支是拿「真實 Date.now()」判斷時間是否已過，所以日期必須相對取得；
+  // 寫死日期會在該日過後讓測試無故變紅（已發生過一次）。
+  const ymd = h.ymdOffset(1); // 明天
+  env.setAi('askJSON', async () => ({ ok: true, type: 'once', datetime: `${ymd} 09:00`, message: '回診' }));
   const msg = await reminder.add('u1', '提醒我 明天9點 回診');
-  assert.strictEqual(msg, '✅ 好的，07-25 09:00 我會提醒你：「回診」');
+  assert.strictEqual(msg, `✅ 好的，${ymd.slice(5)} 09:00 我會提醒你：「回診」`);
 });
 
 test('add()：daily 成功確認句鎖精確字串', async () => {

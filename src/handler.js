@@ -211,6 +211,29 @@ async function handleText(userId, text) {
   if (trimmed === '清除提醒' || trimmed === '刪除提醒' || trimmed === '提醒清除') {
     return reminder.clear(userId);
   }
+
+  // 越南語取消提醒（xóa／kết thúc／dừng／huỷ nhắc nhở …）。
+  // 這是「不經 AI」的救生索：Groq 額度用盡或當機時，使用者仍必須能自行關掉提醒
+  // ——真實事故是越南家人被每日提醒轟炸卻無法用自己的語言關閉。
+  const viRem = toAscii(trimmed);
+  const VI_STOP = '(?:xoa|ket thuc|dung|huy|tat)';
+  if (new RegExp(`^${VI_STOP}\\s+(?:tat ca|het)\\s+nhac nho$`).test(viRem)) {
+    reminder.clear(userId); // 真的清除；回覆用使用者的語言（clear() 本身只回中文）
+    return lang.reminderClearedAll(await lang.resolve(userId));
+  }
+  const viRemDel = viRem.match(new RegExp(`^${VI_STOP}\\s+nhac nho\\s+(.+)$`));
+  if (viRemDel) {
+    const code = await lang.resolve(userId);
+    // 關鍵字盡量從「原文」切回以保留聲調；長度不一致（輸入已是 NFD）時退回去聲調版，
+    // 比對照樣成立（removeByKeyword 兩邊都會去聲調）。
+    const keyword =
+      trimmed.length === viRem.length
+        ? trimmed.slice(viRem.length - viRemDel[1].length).trim()
+        : viRemDel[1].trim();
+    const r = reminder.removeByKeyword(userId, keyword, code);
+    return r.ok ? lang.reminderDeleted(code, r.removed) : lang.reminderNoMatch(code, keyword);
+  }
+
   if (/^提醒/.test(trimmed)) {
     return reminder.add(userId, trimmed);
   }
